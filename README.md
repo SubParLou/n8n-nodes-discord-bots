@@ -95,7 +95,13 @@ Each event type produces a JSON output object. Common fields across all events:
 | Field | Description |
 |-------|-------------|
 | `userId` | Discord user ID who caused the event |
+| `userDisplayName` | Best available display name (guild display name, then global name, then username) |
+| `userGlobalName` | Discord global display name, or null |
 | `userName` | Discord username |
+| `userAvatarUrl` | Resolved avatar URL for the user |
+| `memberDisplayName` | Guild member display name when available, else null |
+| `memberNickname` | Guild nickname when available, else null |
+| `memberRoleIds` | Guild role IDs for the member when available, else an empty array |
 | `guildId` | Guild (server) ID, or null for DMs |
 | `channelId` | Channel ID |
 | `createdTimestamp` | Unix timestamp (milliseconds) of the event |

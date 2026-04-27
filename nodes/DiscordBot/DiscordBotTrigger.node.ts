@@ -64,7 +64,56 @@ function isPotentiallyUnsafeRegex(pattern: string): boolean {
   return false;
 }
 
+function buildMemberInfo(
+  memberLike: unknown,
+): { memberDisplayName: string | null; memberNickname: string | null; memberRoleIds: string[] } {
+  if (!memberLike || typeof memberLike !== 'object') {
+    return {
+      memberDisplayName: null,
+      memberNickname: null,
+      memberRoleIds: [],
+    };
+  }
+
+  const member = memberLike as {
+    displayName?: unknown;
+    nickname?: unknown;
+    nick?: unknown;
+    roles?: unknown;
+  };
+
+  const memberDisplayName = typeof member.displayName === 'string' ? member.displayName : null;
+  const memberNickname =
+    typeof member.nickname === 'string'
+      ? member.nickname
+      : typeof member.nick === 'string'
+        ? member.nick
+        : null;
+
+  let memberRoleIds: string[] = [];
+  if (Array.isArray(member.roles)) {
+    memberRoleIds = member.roles.filter((id): id is string => typeof id === 'string');
+  } else if (
+    member.roles &&
+    typeof member.roles === 'object' &&
+    'cache' in member.roles &&
+    (member.roles as { cache?: unknown }).cache instanceof Map
+  ) {
+    memberRoleIds = [...((member.roles as { cache: Map<string, unknown> }).cache.keys())];
+  }
+
+  return {
+    memberDisplayName,
+    memberNickname,
+    memberRoleIds,
+  };
+}
+
 function buildMessagePayload(message: Message) {
+  const memberInfo = buildMemberInfo(message.member);
+  const userGlobalName = message.author.globalName ?? null;
+  const userDisplayName = memberInfo.memberDisplayName ?? userGlobalName ?? message.author.username;
+
   return {
     type: message.guildId ? 'channel-message' : 'direct-message',
     messageId: message.id,
@@ -72,8 +121,14 @@ function buildMessagePayload(message: Message) {
     guildId: message.guildId,
     channelId: message.channelId,
     userId: message.author.id,
+    userDisplayName,
+    userGlobalName,
     userName: message.author.username,
     userTag: message.author.tag,
+    userAvatarUrl: message.author.displayAvatarURL(),
+    memberDisplayName: memberInfo.memberDisplayName,
+    memberNickname: memberInfo.memberNickname,
+    memberRoleIds: memberInfo.memberRoleIds,
     authorIsBot: message.author.bot,
     createdTimestamp: message.createdTimestamp,
     attachments: [...message.attachments.values()].map((a) => ({
@@ -125,6 +180,10 @@ function matchPattern(content: string, pattern: string, value: string, caseSensi
 
 function buildInteractionPayload(interaction: Interaction) {
   const user = interaction.user;
+  const memberInfo = buildMemberInfo(interaction.member);
+  const userGlobalName = user.globalName ?? null;
+  const userDisplayName = memberInfo.memberDisplayName ?? userGlobalName ?? user.username;
+
   const base = {
     interactionId: interaction.id,
     interactionToken: interaction.token,
@@ -132,8 +191,14 @@ function buildInteractionPayload(interaction: Interaction) {
     guildId: interaction.guildId,
     channelId: interaction.channelId,
     userId: user.id,
+    userDisplayName,
+    userGlobalName,
     userName: user.username,
     userTag: user.tag,
+    userAvatarUrl: user.displayAvatarURL(),
+    memberDisplayName: memberInfo.memberDisplayName,
+    memberNickname: memberInfo.memberNickname,
+    memberRoleIds: memberInfo.memberRoleIds,
     createdTimestamp: interaction.createdTimestamp,
   };
 
@@ -561,8 +626,11 @@ export class DiscordBotTrigger implements INodeType {
               channelId: message.channelId,
               messageId: message.id,
               userId: user.id,
+              userDisplayName: user.globalName ?? user.username,
+              userGlobalName: user.globalName ?? null,
               userName: user.username,
               userTag: user.tag,
+              userAvatarUrl: user.displayAvatarURL(),
               emojiName: currentEmojiName,
               emojiId: reaction.emoji.id,
               count: reaction.count,
