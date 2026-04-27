@@ -241,7 +241,73 @@ export class DiscordBot implements INodeType {
         required: true,
       },
       {
-        displayName: 'Command Options JSON',
+        displayName: 'Command Options',
+        name: 'commandOptions',
+        type: 'collection',
+        displayOptions: {
+          show: {
+            operation: ['register-slash-command'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Option',
+        options: [
+          {
+            displayName: 'Options',
+            name: 'options',
+            type: 'fixedCollection',
+            typeOptions: {
+              multipleValues: true,
+            },
+            default: [],
+            options: [
+              {
+                displayName: 'Option',
+                name: 'option',
+                values: [
+                  {
+                    displayName: 'Option Name',
+                    name: 'name',
+                    type: 'string',
+                    description: 'Lowercase, no spaces (e.g. "username")',
+                    required: true,
+                    default: '',
+                  },
+                  {
+                    displayName: 'Option Description',
+                    name: 'description',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                  },
+                  {
+                    displayName: 'Option Type',
+                    name: 'type',
+                    type: 'options',
+                    options: [
+                      { name: 'String', value: 3 },
+                      { name: 'Integer', value: 4 },
+                      { name: 'Boolean', value: 5 },
+                      { name: 'User', value: 7 },
+                      { name: 'Channel', value: 8 },
+                      { name: 'Role', value: 9 },
+                    ],
+                    default: 3,
+                  },
+                  {
+                    displayName: 'Required',
+                    name: 'required',
+                    type: 'boolean',
+                    default: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Or Provide Raw JSON Instead',
         name: 'commandOptionsJson',
         type: 'json',
         displayOptions: {
@@ -250,7 +316,7 @@ export class DiscordBot implements INodeType {
           },
         },
         default: '[]',
-        description: 'JSON array for slash command options',
+        description: 'Advanced: JSON array for slash command options (use if the builder above does not meet your needs)',
       },
     ],
   };
@@ -338,14 +404,35 @@ export class DiscordBot implements INodeType {
       if (operation === 'register-slash-command') {
         const commandName = this.getNodeParameter('commandName', i) as string;
         const commandDescription = this.getNodeParameter('commandDescription', i) as string;
-        const commandOptionsJson = this.getNodeParameter('commandOptionsJson', i, '[]') as string;
         const commandGuildId = this.getNodeParameter('commandGuildId', i, '') as string;
 
-        const commandOptions = parseJsonField<ApplicationCommandOptionData[]>(
-          commandOptionsJson,
-          'Command Options JSON',
-          this,
-        );
+        let commandOptions: ApplicationCommandOptionData[] = [];
+
+        // Try to use the friendly builder first
+        const commandOptionsCollection = this.getNodeParameter('commandOptions', i, {}) as {
+          options?: { option?: Array<{ name: string; description: string; type: number; required: boolean }> };
+        };
+
+        if (
+          commandOptionsCollection.options?.option &&
+          Array.isArray(commandOptionsCollection.options.option) &&
+          commandOptionsCollection.options.option.length > 0
+        ) {
+          commandOptions = commandOptionsCollection.options.option.map((opt) => ({
+            name: opt.name,
+            description: opt.description,
+            type: opt.type,
+            required: opt.required,
+          }));
+        } else {
+          // Fall back to JSON if no options were added via the builder
+          const commandOptionsJson = this.getNodeParameter('commandOptionsJson', i, '[]') as string;
+          commandOptions = parseJsonField<ApplicationCommandOptionData[]>(
+            commandOptionsJson,
+            'Command Options JSON',
+            this,
+          );
+        }
 
         const command = await registerSlashCommand({
           token: credentials.token,
