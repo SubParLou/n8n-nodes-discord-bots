@@ -67,6 +67,22 @@ export async function getClient(credentials: DiscordBotCredentials): Promise<Cli
   }
 }
 
+export async function getIsolatedClient(credentials: DiscordBotCredentials): Promise<Client> {
+  const { token } = credentials;
+  if (!token) {
+    throw new Error('Missing Discord bot token');
+  }
+
+  const isolated = createDiscordClient(token);
+  try {
+    await isolated.ready;
+    return isolated.client;
+  } catch (error) {
+    isolated.client.destroy();
+    throw error;
+  }
+}
+
 export function addClientListener<T extends keyof ClientEvents>(
   client: Client,
   event: T,

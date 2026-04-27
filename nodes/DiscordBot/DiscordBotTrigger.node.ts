@@ -14,7 +14,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 import {
   addClientListener,
-  getClient,
+  getIsolatedClient,
   loadChannelOptions,
   loadGuildOptions,
   loadRoleOptions,
@@ -470,7 +470,7 @@ export class DiscordBotTrigger implements INodeType {
 
   async trigger(this: ITriggerFunctions): Promise<ITriggerResponse> {
     const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-    const client = await getClient(credentials);
+    const client = await getIsolatedClient(credentials);
 
     const event = this.getNodeParameter('event') as TriggerType;
     const guildIds = this.getNodeParameter('guildIds', []) as string[];
@@ -730,6 +730,7 @@ export class DiscordBotTrigger implements INodeType {
         for (const remove of removeListeners) {
           remove();
         }
+        client.destroy();
       },
     };
   }
