@@ -43,10 +43,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -n "$NODE_AUTH_TOKEN" ]; then
-            echo "Publishing with NPM_TOKEN secret"
-            npm publish --access public
-          else
-            echo "Publishing with OIDC trusted publishing"
-            npm publish --access public --provenance
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is missing. Add NPM_TOKEN in GitHub repository settings (Secrets and variables > Actions > Secrets)."
+            exit 1
           fi
+          echo "Publishing with NPM_TOKEN secret"
+          npm publish --access public
