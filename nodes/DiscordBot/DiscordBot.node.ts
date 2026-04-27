@@ -50,6 +50,18 @@ function parseEmbedColor(value: string, context: IExecuteFunctions): number | un
   return Number.parseInt(normalized, 16);
 }
 
+function isAlreadyAcknowledgedInteractionError(error: unknown): boolean {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 40060) {
+      return true;
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return /already been acknowledged/i.test(message);
+}
+
 export class DiscordBot implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Discord Bot',
@@ -714,25 +726,42 @@ export class DiscordBot implements INodeType {
           components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
         }
 
+        const responseBody = {
+          content: content || undefined,
+          embeds,
+          components,
+          flags: ephemeral ? 64 : 0,
+        };
+
         const rest = new REST({ version: '10' });
-        await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
-          auth: false,
-          body: {
-            type: 4,
-            data: {
-              content: content || undefined,
-              embeds,
-              components,
-              flags: ephemeral ? 64 : 0,
+        let responseType: 'initial' | 'follow-up' = 'initial';
+
+        try {
+          await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
+            auth: false,
+            body: {
+              type: 4,
+              data: responseBody,
             },
-          },
-        });
+          });
+        } catch (error) {
+          if (!isAlreadyAcknowledgedInteractionError(error)) {
+            throw error;
+          }
+
+          await rest.post(Routes.webhook(credentials.clientId, interactionToken), {
+            auth: false,
+            body: responseBody,
+          });
+          responseType = 'follow-up';
+        }
 
         returnData.push({
           json: {
             operation,
             interactionId,
             responded: true,
+            responseType,
           },
           pairedItem: { item: i },
         });
