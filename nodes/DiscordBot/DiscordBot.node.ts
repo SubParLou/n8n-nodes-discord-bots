@@ -716,6 +716,7 @@ export class DiscordBot implements INodeType {
 
         const rest = new REST({ version: '10' });
         await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
+          auth: false,
           body: {
             type: 4,
             data: {
