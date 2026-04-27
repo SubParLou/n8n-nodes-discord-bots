@@ -527,15 +527,29 @@ export class DiscordBotTrigger implements INodeType {
     if (event === 'channel-message' || event === 'direct-message') {
       removeListeners.push(
         addClientListener(client, 'messageCreate', async (message) => {
+          if (message.partial) {
+            try {
+              await message.fetch();
+            } catch (error) {
+              logNonCriticalError('Failed to fetch partial message for messageCreate event', error, {
+                event,
+                guildId: message.guildId,
+                channelId: message.channelId,
+              });
+              return;
+            }
+          }
+
           if (message.author.bot && !includeBotMessages) {
             return;
           }
 
-          const isDm = message.channel.type === ChannelType.DM;
-          if (event === 'channel-message' && isDm) {
+          // Guild presence is the most reliable way to separate guild vs direct messages.
+          const isDirectMessage = message.guildId === null;
+          if (event === 'channel-message' && isDirectMessage) {
             return;
           }
-          if (event === 'direct-message' && !isDm) {
+          if (event === 'direct-message' && !isDirectMessage) {
             return;
           }
 
@@ -551,7 +565,8 @@ export class DiscordBotTrigger implements INodeType {
             return;
           }
 
-          if (!matchPattern(message.content, pattern, patternValue, caseSensitive)) {
+          const messageContent = typeof message.content === 'string' ? message.content : '';
+          if (!matchPattern(messageContent, pattern, patternValue, caseSensitive)) {
             return;
           }
 
