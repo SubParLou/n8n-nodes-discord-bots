@@ -539,7 +539,7 @@ export class DiscordBotTrigger implements INodeType {
             return;
           }
 
-          if (!passGuildFilter(message.guildId)) {
+          if (event === 'channel-message' && !passGuildFilter(message.guildId)) {
             return;
           }
 
