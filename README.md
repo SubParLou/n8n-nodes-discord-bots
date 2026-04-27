@@ -264,3 +264,4 @@ npm run dev     # watch mode for TypeScript
 - Discord interaction responses must be sent within 3 seconds of receipt. Enable **Auto Acknowledge Interactions** on the trigger so the workflow has up to 15 minutes to respond via **Respond to Interaction**.
 - Guild-scoped slash commands register instantly. Global commands can take up to 1 hour to appear in Discord.
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
+- npm publishing can be automated via GitHub Actions by pushing a version tag (for example `v1.0.5`).
