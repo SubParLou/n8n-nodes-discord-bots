@@ -36,6 +36,20 @@ function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFu
   }
 }
 
+function parseEmbedColor(value: string, context: IExecuteFunctions): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    throw new NodeOperationError(context.getNode(), 'Embed Color must be a 6-digit hex value like #5865F2');
+  }
+
+  return Number.parseInt(normalized, 16);
+}
+
 export class DiscordBot implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Discord Bot',
@@ -157,6 +171,66 @@ export class DiscordBot implements INodeType {
         description: 'JSON array of Discord embeds',
       },
       {
+        displayName: 'Reply Embeds',
+        name: 'replyEmbeds',
+        type: 'collection',
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Embed',
+        options: [
+          {
+            displayName: 'Embeds',
+            name: 'embeds',
+            type: 'fixedCollection',
+            typeOptions: {
+              multipleValues: true,
+            },
+            default: [],
+            options: [
+              {
+                displayName: 'Embed',
+                name: 'embed',
+                values: [
+                  {
+                    displayName: 'Title',
+                    name: 'title',
+                    type: 'string',
+                    default: '',
+                  },
+                  {
+                    displayName: 'Description',
+                    name: 'description',
+                    type: 'string',
+                    typeOptions: {
+                      rows: 3,
+                    },
+                    default: '',
+                  },
+                  {
+                    displayName: 'URL',
+                    name: 'url',
+                    type: 'string',
+                    default: '',
+                  },
+                  {
+                    displayName: 'Color',
+                    name: 'color',
+                    type: 'color',
+                    default: '',
+                    description: 'Hex color, for example #5865F2',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        description: 'Optional builder for common embed fields',
+      },
+      {
         displayName: 'Components JSON',
         name: 'componentsJson',
         type: 'json',
@@ -167,6 +241,78 @@ export class DiscordBot implements INodeType {
         },
         default: '[]',
         description: 'JSON array for buttons, selects, or modal components',
+      },
+      {
+        displayName: 'Reply Components',
+        name: 'replyComponents',
+        type: 'collection',
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Button',
+        options: [
+          {
+            displayName: 'Buttons',
+            name: 'buttons',
+            type: 'fixedCollection',
+            typeOptions: {
+              multipleValues: true,
+            },
+            default: [],
+            options: [
+              {
+                displayName: 'Button',
+                name: 'button',
+                values: [
+                  {
+                    displayName: 'Custom ID',
+                    name: 'customId',
+                    type: 'string',
+                    default: '',
+                    description: 'Required for non-link buttons',
+                  },
+                  {
+                    displayName: 'Disabled',
+                    name: 'disabled',
+                    type: 'boolean',
+                    default: false,
+                  },
+                  {
+                    displayName: 'Label',
+                    name: 'label',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                  },
+                  {
+                    displayName: 'Style',
+                    name: 'style',
+                    type: 'options',
+                    options: [
+                      { name: 'Primary', value: 1 },
+                      { name: 'Secondary', value: 2 },
+                      { name: 'Success', value: 3 },
+                      { name: 'Danger', value: 4 },
+                      { name: 'Link', value: 5 },
+                    ],
+                    default: 1,
+                  },
+                  {
+                    displayName: 'URL',
+                    name: 'url',
+                    type: 'string',
+                    default: '',
+                    description: 'Required for link buttons',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        description: 'Optional button builder for interaction replies',
       },
       {
         displayName: 'Ephemeral',
@@ -180,12 +326,25 @@ export class DiscordBot implements INodeType {
         default: false,
       },
       {
+        displayName: 'Use Interaction Data From Input',
+        name: 'useInputInteractionData',
+        type: 'boolean',
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+          },
+        },
+        default: true,
+        description: 'Whether to read interactionId and interactionToken from the incoming item (for example from Discord Bot Trigger)',
+      },
+      {
         displayName: 'Interaction ID',
         name: 'interactionId',
         type: 'string',
         displayOptions: {
           show: {
             operation: ['respond-to-interaction'],
+            useInputInteractionData: [false],
           },
         },
         default: '',
@@ -199,6 +358,7 @@ export class DiscordBot implements INodeType {
         displayOptions: {
           show: {
             operation: ['respond-to-interaction'],
+            useInputInteractionData: [false],
           },
         },
         default: '',
@@ -458,15 +618,101 @@ export class DiscordBot implements INodeType {
       }
 
       if (operation === 'respond-to-interaction') {
-        const interactionId = this.getNodeParameter('interactionId', i) as string;
-        const interactionToken = this.getNodeParameter('interactionToken', i) as string;
+        const useInputInteractionData = this.getNodeParameter('useInputInteractionData', i, true) as boolean;
         const content = this.getNodeParameter('content', i, '') as string;
         const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
         const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
         const ephemeral = this.getNodeParameter('ephemeral', i, false) as boolean;
 
-        const embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-        const components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+        let interactionId: string;
+        let interactionToken: string;
+
+        if (useInputInteractionData) {
+          const itemJson = items[i].json as Record<string, unknown>;
+          interactionId = String(itemJson.interactionId ?? '').trim();
+          interactionToken = String(itemJson.interactionToken ?? '').trim();
+
+          if (!interactionId || !interactionToken) {
+            throw new NodeOperationError(
+              this.getNode(),
+              'Input item is missing interactionId or interactionToken. Connect Discord Bot Trigger output or disable "Use Interaction Data From Input" and enter values manually.',
+            );
+          }
+        } else {
+          interactionId = this.getNodeParameter('interactionId', i) as string;
+          interactionToken = this.getNodeParameter('interactionToken', i) as string;
+        }
+
+        const replyEmbedsCollection = this.getNodeParameter('replyEmbeds', i, {}) as {
+          embeds?: { embed?: Array<{ title: string; description: string; url: string; color: string }> };
+        };
+        const replyButtonsCollection = this.getNodeParameter('replyComponents', i, {}) as {
+          buttons?: {
+            button?: Array<{ label: string; style: number; customId: string; url: string; disabled: boolean }>;
+          };
+        };
+
+        let embeds: APIEmbed[];
+        if (
+          replyEmbedsCollection.embeds?.embed &&
+          Array.isArray(replyEmbedsCollection.embeds.embed) &&
+          replyEmbedsCollection.embeds.embed.length > 0
+        ) {
+          embeds = replyEmbedsCollection.embeds.embed.map((embed) => ({
+            title: embed.title || undefined,
+            description: embed.description || undefined,
+            url: embed.url || undefined,
+            color: parseEmbedColor(embed.color, this),
+          }));
+        } else {
+          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
+        }
+
+        let components: APIActionRowComponent<any>[];
+        if (
+          replyButtonsCollection.buttons?.button &&
+          Array.isArray(replyButtonsCollection.buttons.button) &&
+          replyButtonsCollection.buttons.button.length > 0
+        ) {
+          components = replyButtonsCollection.buttons.button.map((button) => {
+            if (button.style === 5) {
+              if (!button.url.trim()) {
+                throw new NodeOperationError(this.getNode(), 'Link buttons require a URL');
+              }
+              return {
+                type: 1,
+                components: [
+                  {
+                    type: 2,
+                    style: button.style,
+                    label: button.label,
+                    url: button.url,
+                    disabled: button.disabled,
+                  },
+                ],
+              };
+            }
+
+            if (!button.customId.trim()) {
+              throw new NodeOperationError(this.getNode(), 'Non-link buttons require a Custom ID');
+            }
+
+            return {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: button.style,
+                  label: button.label,
+                  custom_id: button.customId,
+                  disabled: button.disabled,
+                },
+              ],
+            };
+          }) as unknown as APIActionRowComponent<any>[];
+        } else {
+          components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+        }
 
         const rest = new REST({ version: '10' });
         await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
