@@ -40,4 +40,13 @@ jobs:
         run: npm run build
 
       - name: Publish
-        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "Publishing with NPM_TOKEN secret"
+            npm publish --access public
+          else
+            echo "Publishing with OIDC trusted publishing"
+            npm publish --access public --provenance
+          fi
