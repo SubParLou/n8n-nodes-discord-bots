@@ -43,6 +43,10 @@ function logNonCriticalError(context: string, error: unknown, details: Record<st
   console.warn(`[DiscordBotTrigger] ${context}: ${message}`, details);
 }
 
+function normalizeSlashCommandName(value: string): string {
+  return value.trim().replace(/^\//, '').toLowerCase();
+}
+
 function isPotentiallyUnsafeRegex(pattern: string): boolean {
   if (pattern.length > 128) {
     return true;
@@ -208,7 +212,7 @@ export class DiscordBotTrigger implements INodeType {
         default: 'channel-message',
       },
       {
-        displayName: 'Guild Names or IDs',
+        displayName: 'Guild Names or IDs (Optional)',
         name: 'guildIds',
         type: 'multiOptions',
         typeOptions: {
@@ -320,7 +324,7 @@ export class DiscordBotTrigger implements INodeType {
         description: 'Filter by emoji name, such as thumbs_up or custom emoji name',
       },
       {
-        displayName: 'Slash Command Name',
+        displayName: 'Slash Command Name (No / Needed)',
         name: 'slashCommandName',
         type: 'string',
         displayOptions: {
@@ -329,6 +333,7 @@ export class DiscordBotTrigger implements INodeType {
           },
         },
         default: '',
+        description: 'Leave empty to trigger for all slash commands. You can enter ping or /ping.',
       },
       {
         displayName: 'Custom ID',
@@ -412,6 +417,7 @@ export class DiscordBotTrigger implements INodeType {
     const reactionMessageId = this.getNodeParameter('reactionMessageId', '') as string;
     const emojiName = this.getNodeParameter('emojiName', '') as string;
     const slashCommandName = this.getNodeParameter('slashCommandName', '') as string;
+    const normalizedSlashCommandName = normalizeSlashCommandName(slashCommandName);
     const customId = this.getNodeParameter('customId', '') as string;
     const additionalFields = this.getNodeParameter('additionalFields', {}) as {
       includeBotMessages?: boolean;
@@ -578,7 +584,10 @@ export class DiscordBotTrigger implements INodeType {
             if (!interaction.isChatInputCommand()) {
               return;
             }
-            if (slashCommandName && interaction.commandName !== slashCommandName) {
+            if (
+              normalizedSlashCommandName &&
+              normalizeSlashCommandName(interaction.commandName) !== normalizedSlashCommandName
+            ) {
               return;
             }
             if (autoAcknowledge && !interaction.deferred && !interaction.replied) {
