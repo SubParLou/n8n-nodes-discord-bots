@@ -506,11 +506,21 @@ export class DiscordBotTrigger implements INodeType {
       return guildIds.includes(guildId);
     };
 
-    const passChannelFilter = (id: string): boolean => {
+    const passChannelFilter = (message: Message): boolean => {
       if (!channelIds.length) {
         return true;
       }
-      return channelIds.includes(id);
+
+      if (channelIds.includes(message.channelId)) {
+        return true;
+      }
+
+      const parentId = 'parentId' in message.channel ? message.channel.parentId : null;
+      if (typeof parentId === 'string' && channelIds.includes(parentId)) {
+        return true;
+      }
+
+      return false;
     };
 
     const passRoleFilter = (message: Message): boolean => {
@@ -556,7 +566,7 @@ export class DiscordBotTrigger implements INodeType {
             return;
           }
 
-          if (event === 'channel-message' && !passChannelFilter(message.channelId)) {
+          if (event === 'channel-message' && !passChannelFilter(message)) {
             return;
           }
 
@@ -618,7 +628,7 @@ export class DiscordBotTrigger implements INodeType {
           if (!passGuildFilter(message.guildId)) {
             return;
           }
-          if (!passChannelFilter(message.channelId)) {
+          if (!passChannelFilter(message)) {
             return;
           }
           if (!passRoleFilter(message)) {
