@@ -658,52 +658,75 @@ export class DiscordBotTrigger implements INodeType {
       return roleIds.some((id) => memberRoles.has(id));
     };
 
+    console.log(`[DiscordBotTrigger] Registering ${event} listener | guildIds=${JSON.stringify(guildIds)} | channelIds=${JSON.stringify(channelIds)} | pattern=${pattern}`);
+
     if (event === 'channel-message' || event === 'direct-message') {
       removeListeners.push(
         addClientListener(client, 'messageCreate', async (message) => {
-          if (message.partial) {
-            try {
-              await message.fetch();
-            } catch (error) {
-              logNonCriticalError('Failed to fetch partial message for messageCreate event', error, {
-                event,
-                guildId: message.guildId,
-                channelId: message.channelId,
-              });
-              // Keep processing with available partial data to avoid dropping events.
+          try {
+            console.log(`[DiscordBotTrigger:messageCreate] guildId=${message.guildId} channelId=${message.channelId} partial=${message.partial} authorBot=${message.author?.bot ?? 'null'} channelType=${message.channel?.type} event=${event}`);
+
+            if (message.partial) {
+              try {
+                await message.fetch();
+              } catch (error) {
+                logNonCriticalError('Failed to fetch partial message for messageCreate event', error, {
+                  event,
+                  guildId: message.guildId,
+                  channelId: message.channelId,
+                });
+                // Keep processing with available partial data to avoid dropping events.
+              }
             }
-          }
 
-          if (message.author.bot && !includeBotMessages) {
-            return;
-          }
+            // message.author is null on unfetched partial messages — guard before access.
+            const authorIsBot = message.author?.bot ?? false;
+            if (authorIsBot && !includeBotMessages) {
+              console.log('[DiscordBotTrigger:messageCreate] filtered: author is bot');
+              return;
+            }
 
-          const isDirectMessage = message.guildId === null || message.channel.type === ChannelType.DM;
-          if (event === 'channel-message' && isDirectMessage) {
-            return;
-          }
-          if (event === 'direct-message' && !isDirectMessage) {
-            return;
-          }
+            const isDirectMessage = message.guildId === null || message.channel?.type === ChannelType.DM;
+            console.log(`[DiscordBotTrigger:messageCreate] isDirectMessage=${isDirectMessage}`);
+            if (event === 'channel-message' && isDirectMessage) {
+              console.log('[DiscordBotTrigger:messageCreate] filtered: is DM, but event=channel-message');
+              return;
+            }
+            if (event === 'direct-message' && !isDirectMessage) {
+              console.log('[DiscordBotTrigger:messageCreate] filtered: is guild message, but event=direct-message');
+              return;
+            }
 
-          if (event === 'channel-message' && !passGuildFilter(message.guildId, message.guild?.name ?? null)) {
-            return;
-          }
+            if (event === 'channel-message' && !passGuildFilter(message.guildId, message.guild?.name ?? null)) {
+              console.log(`[DiscordBotTrigger:messageCreate] filtered: guild mismatch guildId=${message.guildId} against ${JSON.stringify(guildIds)}`);
+              return;
+            }
 
-          if (event === 'channel-message' && !passChannelFilter(message)) {
-            return;
-          }
+            if (event === 'channel-message' && !passChannelFilter(message)) {
+              console.log(`[DiscordBotTrigger:messageCreate] filtered: channel mismatch channelId=${message.channelId} against ${JSON.stringify(channelIds)}`);
+              return;
+            }
 
-          if (event === 'channel-message' && !passRoleFilter(message)) {
-            return;
-          }
+            if (event === 'channel-message' && !passRoleFilter(message)) {
+              console.log('[DiscordBotTrigger:messageCreate] filtered: role mismatch');
+              return;
+            }
 
-          const messageContent = typeof message.content === 'string' ? message.content : '';
-          if (!matchPattern(messageContent, pattern, patternValue, caseSensitive)) {
-            return;
-          }
+            const messageContent = typeof message.content === 'string' ? message.content : '';
+            if (!matchPattern(messageContent, pattern, patternValue, caseSensitive)) {
+              console.log(`[DiscordBotTrigger:messageCreate] filtered: pattern mismatch pattern=${pattern}`);
+              return;
+            }
 
-          this.emit([this.helpers.returnJsonArray(buildMessagePayload(message))]);
+            console.log('[DiscordBotTrigger:messageCreate] emitting event');
+            this.emit([this.helpers.returnJsonArray(buildMessagePayload(message))]);
+          } catch (error) {
+            logNonCriticalError('Unhandled error in messageCreate handler', error, {
+              event,
+              guildId: message.guildId,
+              channelId: message.channelId,
+            });
+          }
         }),
       );
     }
