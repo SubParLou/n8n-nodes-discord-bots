@@ -1,5 +1,7 @@
 # n8n-nodes-discord-bots
 
+This is a work in progress. Not all features work as intended, yet.
+
 n8n community nodes for building Discord bots with:
 
 - Triggering workflows from direct messages, channel messages, message reactions, slash commands, component interactions, and modal submissions.

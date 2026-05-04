@@ -544,8 +544,7 @@ export class DiscordBotTrigger implements INodeType {
             return;
           }
 
-          // Guild presence is the most reliable way to separate guild vs direct messages.
-          const isDirectMessage = message.guildId === null;
+          const isDirectMessage = message.guildId === null || message.channel.type === ChannelType.DM;
           if (event === 'channel-message' && isDirectMessage) {
             return;
           }
