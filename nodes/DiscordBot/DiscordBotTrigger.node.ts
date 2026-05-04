@@ -48,37 +48,73 @@ function normalizeSlashCommandName(value: string): string {
 }
 
 function normalizeSelectedValues(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (typeof item === 'string' || typeof item === 'number') {
-          return String(item);
-        }
-
-        if (item && typeof item === 'object' && 'value' in item) {
-          const optionValue = (item as { value?: unknown }).value;
-          if (typeof optionValue === 'string' || typeof optionValue === 'number') {
-            return String(optionValue);
-          }
-        }
-
-        return null;
-      })
-      .filter((item): item is string => item !== null);
-  }
-
-  if (typeof value === 'string' || typeof value === 'number') {
-    return [String(value)];
-  }
-
-  if (value && typeof value === 'object' && 'value' in value) {
-    const optionValue = (value as { value?: unknown }).value;
-    if (typeof optionValue === 'string' || typeof optionValue === 'number') {
-      return [String(optionValue)];
+  const normalizeToken = (token: string): string | null => {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      return null;
     }
-  }
 
-  return [];
+    const unquoted =
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+        ? trimmed.slice(1, -1).trim()
+        : trimmed;
+
+    const mentionMatch = /^<[@#&]?(\d+)>$/.exec(unquoted);
+    if (mentionMatch) {
+      return mentionMatch[1];
+    }
+
+    return unquoted;
+  };
+
+  const flattenUnknown = (input: unknown): string[] => {
+    if (Array.isArray(input)) {
+      return input.flatMap((item) => flattenUnknown(item));
+    }
+
+    if (typeof input === 'number') {
+      return [String(input)];
+    }
+
+    if (typeof input === 'string') {
+      const trimmed = input.trim();
+      if (!trimmed) {
+        return [];
+      }
+
+      const looksLikeJson =
+        (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('"') && trimmed.endsWith('"'));
+
+      if (looksLikeJson) {
+        try {
+          return flattenUnknown(JSON.parse(trimmed));
+        } catch {
+          // Fall through and treat as plain string.
+        }
+      }
+
+      if (trimmed.includes(',')) {
+        return trimmed
+          .split(',')
+          .map((part) => normalizeToken(part))
+          .filter((token): token is string => token !== null);
+      }
+
+      const normalized = normalizeToken(trimmed);
+      return normalized ? [normalized] : [];
+    }
+
+    if (input && typeof input === 'object' && 'value' in input) {
+      return flattenUnknown((input as { value?: unknown }).value);
+    }
+
+    return [];
+  };
+
+  return [...new Set(flattenUnknown(value))];
 }
 
 function isPotentiallyUnsafeRegex(pattern: string): boolean {
