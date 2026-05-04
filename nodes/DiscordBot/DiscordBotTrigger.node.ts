@@ -496,14 +496,20 @@ export class DiscordBotTrigger implements INodeType {
 
     const removeListeners: Array<() => void> = [];
 
-    const passGuildFilter = (guildId: string | null): boolean => {
+    const passGuildFilter = (guildId: string | null, guildName: string | null = null): boolean => {
       if (!guildIds.length) {
         return true;
       }
-      if (!guildId) {
-        return false;
+      if (guildId && guildIds.includes(guildId)) {
+        return true;
       }
-      return guildIds.includes(guildId);
+
+      if (guildName) {
+        const normalizedGuildName = guildName.toLowerCase();
+        return guildIds.some((value) => value.toLowerCase() === normalizedGuildName);
+      }
+
+      return false;
     };
 
     const passChannelFilter = (message: Message): boolean => {
@@ -515,9 +521,51 @@ export class DiscordBotTrigger implements INodeType {
         return true;
       }
 
+      const guildName = message.guild?.name ?? null;
+      const channelName = 'name' in message.channel ? message.channel.name : null;
+      if (channelName) {
+        const normalizedChannelName = channelName.toLowerCase();
+        const normalizedGuildChannelName = guildName ? `${guildName} / ${channelName}`.toLowerCase() : null;
+        const hasNameMatch = channelIds.some((value) => {
+          const normalizedValue = value.toLowerCase();
+          if (normalizedValue === normalizedChannelName) {
+            return true;
+          }
+          if (normalizedGuildChannelName && normalizedValue === normalizedGuildChannelName) {
+            return true;
+          }
+          return false;
+        });
+        if (hasNameMatch) {
+          return true;
+        }
+      }
+
       const parentId = 'parentId' in message.channel ? message.channel.parentId : null;
       if (typeof parentId === 'string' && channelIds.includes(parentId)) {
         return true;
+      }
+
+      const parentName =
+        'parent' in message.channel && message.channel.parent && 'name' in message.channel.parent
+          ? message.channel.parent.name
+          : null;
+      if (parentName) {
+        const normalizedParentName = parentName.toLowerCase();
+        const normalizedGuildParentName = guildName ? `${guildName} / ${parentName}`.toLowerCase() : null;
+        const hasParentNameMatch = channelIds.some((value) => {
+          const normalizedValue = value.toLowerCase();
+          if (normalizedValue === normalizedParentName) {
+            return true;
+          }
+          if (normalizedGuildParentName && normalizedValue === normalizedGuildParentName) {
+            return true;
+          }
+          return false;
+        });
+        if (hasParentNameMatch) {
+          return true;
+        }
       }
 
       return false;
@@ -562,7 +610,7 @@ export class DiscordBotTrigger implements INodeType {
             return;
           }
 
-          if (event === 'channel-message' && !passGuildFilter(message.guildId)) {
+          if (event === 'channel-message' && !passGuildFilter(message.guildId, message.guild?.name ?? null)) {
             return;
           }
 
@@ -625,7 +673,7 @@ export class DiscordBotTrigger implements INodeType {
             return;
           }
 
-          if (!passGuildFilter(message.guildId)) {
+          if (!passGuildFilter(message.guildId, message.guild?.name ?? null)) {
             return;
           }
           if (!passChannelFilter(message)) {
@@ -668,7 +716,7 @@ export class DiscordBotTrigger implements INodeType {
     if (event === 'slash-command' || event === 'component-interaction' || event === 'modal-submit') {
       removeListeners.push(
         addClientListener(client, 'interactionCreate', async (interaction) => {
-          if (!passGuildFilter(interaction.guildId)) {
+          if (!passGuildFilter(interaction.guildId, interaction.guild?.name ?? null)) {
             return;
           }
 
