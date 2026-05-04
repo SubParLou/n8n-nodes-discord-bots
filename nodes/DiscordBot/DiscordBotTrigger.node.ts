@@ -14,7 +14,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 import {
   addClientListener,
-  getIsolatedClient,
+  getClient,
   loadChannelOptions,
   loadGuildOptions,
   loadRoleOptions,
@@ -540,7 +540,7 @@ export class DiscordBotTrigger implements INodeType {
 
   async trigger(this: ITriggerFunctions): Promise<ITriggerResponse> {
     const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-    const client = await getIsolatedClient(credentials);
+    const client = await getClient(credentials);
 
     const event = this.getNodeParameter('event') as TriggerType;
     const guildIds = normalizeSelectedValues(this.getNodeParameter('guildIds', []));
@@ -863,7 +863,7 @@ export class DiscordBotTrigger implements INodeType {
         for (const remove of removeListeners) {
           remove();
         }
-        client.destroy();
+        // Do not destroy the shared client — other active workflows may still use it.
       },
     };
   }
