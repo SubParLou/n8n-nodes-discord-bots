@@ -47,6 +47,40 @@ function normalizeSlashCommandName(value: string): string {
   return value.trim().replace(/^\//, '').toLowerCase();
 }
 
+function normalizeSelectedValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string' || typeof item === 'number') {
+          return String(item);
+        }
+
+        if (item && typeof item === 'object' && 'value' in item) {
+          const optionValue = (item as { value?: unknown }).value;
+          if (typeof optionValue === 'string' || typeof optionValue === 'number') {
+            return String(optionValue);
+          }
+        }
+
+        return null;
+      })
+      .filter((item): item is string => item !== null);
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return [String(value)];
+  }
+
+  if (value && typeof value === 'object' && 'value' in value) {
+    const optionValue = (value as { value?: unknown }).value;
+    if (typeof optionValue === 'string' || typeof optionValue === 'number') {
+      return [String(optionValue)];
+    }
+  }
+
+  return [];
+}
+
 function isPotentiallyUnsafeRegex(pattern: string): boolean {
   if (pattern.length > 128) {
     return true;
@@ -473,9 +507,9 @@ export class DiscordBotTrigger implements INodeType {
     const client = await getIsolatedClient(credentials);
 
     const event = this.getNodeParameter('event') as TriggerType;
-    const guildIds = this.getNodeParameter('guildIds', []) as string[];
-    const channelIds = this.getNodeParameter('channelIds', []) as string[];
-    const roleIds = this.getNodeParameter('roleIds', []) as string[];
+    const guildIds = normalizeSelectedValues(this.getNodeParameter('guildIds', []));
+    const channelIds = normalizeSelectedValues(this.getNodeParameter('channelIds', []));
+    const roleIds = normalizeSelectedValues(this.getNodeParameter('roleIds', []));
     const pattern = this.getNodeParameter('pattern', 'every') as string;
     const patternValue = this.getNodeParameter('patternValue', '') as string;
     const caseSensitive = this.getNodeParameter('caseSensitive', false) as boolean;
