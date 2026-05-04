@@ -628,7 +628,7 @@ export class DiscordBotTrigger implements INodeType {
                 guildId: message.guildId,
                 channelId: message.channelId,
               });
-              return;
+              // Keep processing with available partial data to avoid dropping events.
             }
           }
 
