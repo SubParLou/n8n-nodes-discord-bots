@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-discord-bots",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "n8n community node package for building Discord bots with messages, reactions, slash commands, and interactions",
   "license": "MIT",
   "homepage": "https://github.com/SubParLou/n8n-nodes-discord-bots",

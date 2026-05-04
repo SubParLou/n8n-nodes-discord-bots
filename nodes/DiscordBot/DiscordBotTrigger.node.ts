@@ -570,6 +570,12 @@ export class DiscordBotTrigger implements INodeType {
       if (!guildIds.length) {
         return true;
       }
+
+      if (!guildId && !guildName) {
+        // Some partial guild messages can miss guild metadata; allow channel filter to decide.
+        return channelIds.length > 0;
+      }
+
       if (guildId && guildIds.includes(guildId)) {
         return true;
       }
