@@ -2,17 +2,16 @@
 
 This is a work in progress. Not all features work as intended, yet.
 
-n8n community nodes for building Discord bots with:
+n8n community node for building Discord bots:
 
-- Triggering workflows from direct messages, channel messages, message reactions, slash commands, component interactions, and modal submissions.
-- Sending bot messages to channels or DMs.
-- Registering slash commands.
-- Responding to Discord interactions from workflow data.
+- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, and modal submissions.
+- Send bot messages to channels or DMs.
+- Register slash commands.
+- Respond to Discord interactions from workflow data.
 
 ## Requirements
 
 - n8n with community node support
-- Node.js 22 or higher (for self-hosted installs)
 
 ## Install
 
@@ -50,15 +49,13 @@ npm install n8n-nodes-discord-bots
    - **Client ID** — from the OAuth2 section of your application
    - **Bot Token** — from the Bot section of your application
 
-## Nodes
+## Discord Bot Triggers
 
-### Discord Bot Trigger
+Listen for Discord events and starts an n8n workflow when they occur.
 
-Listens for Discord events and starts an n8n workflow when they occur.
+### Supported Triggers
 
-#### Supported events
-
-| Event | Description |
+| Trigger | Description |
 |-------|-------------|
 | New Channel Message | Triggered when a message is posted in a guild text channel |
 | New Direct Message | Triggered when a user sends the bot a DM |
@@ -68,110 +65,11 @@ Listens for Discord events and starts an n8n workflow when they occur.
 | Component Interaction | Triggered when a user clicks a button or uses a select menu |
 | Modal Submit | Triggered when a user submits a modal form |
 
-#### Filtering options
-
-| Option | Applies to | Description |
-|--------|-----------|-------------|
-| Guild | All except Direct Message | Limit to specific guilds (leave empty for all) |
-| Channel | Channel Message, Reaction Added/Removed | Limit to specific text channels |
-| From Role | Channel Message, Reaction Added/Removed | Only trigger for members who have at least one of the selected roles |
-| Pattern | Channel Message, Direct Message | Filter by message content: Every Message, Equals, Starts With, Contains, Ends With, Regex |
-| Case Sensitive | Channel Message, Direct Message | Whether the pattern match is case-sensitive (default: false) |
-| Message ID | Reaction Added/Removed | Only trigger for reactions on a specific message |
-| Emoji Name | Reaction Added/Removed | Only trigger for a specific emoji (e.g. `thumbsup` or custom emoji name) |
-| Slash Command Name | Slash Command | Only trigger for a specific command name |
-| Custom ID | Component Interaction, Modal Submit | Only trigger for a specific button/select/modal custom ID |
-
-#### Additional fields
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| Auto Acknowledge Interactions | true | Automatically defers the interaction reply so the workflow has time to complete before Discord's 3-second timeout |
-| Acknowledge as Ephemeral | false | When auto-acknowledging, defers as an ephemeral (user-only visible) response |
-| Trigger on Bot Messages | false | Whether to trigger when the message author is a bot |
-
-#### Output payload
-
-Each event type produces a JSON output object. Common fields across all events:
-
-| Field | Description |
-|-------|-------------|
-| `userId` | Discord user ID who caused the event |
-| `userDisplayName` | Best available display name (guild display name, then global name, then username) |
-| `userGlobalName` | Discord global display name, or null |
-| `userName` | Discord username |
-| `userAvatarUrl` | Resolved avatar URL for the user |
-| `memberDisplayName` | Guild member display name when available, else null |
-| `memberNickname` | Guild nickname when available, else null |
-| `memberRoleIds` | Guild role IDs for the member when available, else an empty array |
-| `guildId` | Guild (server) ID, or null for DMs |
-| `channelId` | Channel ID |
-| `createdTimestamp` | Unix timestamp (milliseconds) of the event |
-
-**Channel Message / Direct Message** adds:
-
-| Field | Description |
-|-------|-------------|
-| `type` | `channel-message` or `direct-message` |
-| `messageId` | Discord message ID |
-| `content` | Message text content |
-| `authorIsBot` | Whether the author is a bot |
-| `attachments` | Array of attachment objects with `id`, `name`, `contentType`, `size`, `url` |
-
-**Reaction Added / Reaction Removed** adds:
-
-| Field | Description |
-|-------|-------------|
-| `type` | `reaction-add` or `reaction-remove` |
-| `messageId` | ID of the message that was reacted to |
-| `emojiName` | Emoji name (Unicode name or custom emoji name) |
-| `emojiId` | Custom emoji ID, or null for Unicode emoji |
-| `count` | Current total reaction count for that emoji |
-
-**Slash Command** adds:
-
-| Field | Description |
-|-------|-------------|
-| `type` | `slash-command` |
-| `interactionId` | Interaction ID (required for Respond to Interaction) |
-| `interactionToken` | Interaction token (required for Respond to Interaction) |
-| `applicationId` | Bot application ID |
-| `commandName` | Name of the slash command that was invoked |
-| `commandId` | Discord command ID |
-| `options` | Array of command option data provided by the user |
-
-**Component Interaction** (button / select menu) adds:
-
-| Field | Description |
-|-------|-------------|
-| `type` | `component-interaction` |
-| `interactionId` | Interaction ID (required for Respond to Interaction) |
-| `interactionToken` | Interaction token (required for Respond to Interaction) |
-| `applicationId` | Bot application ID |
-| `customId` | Custom ID set on the button or select menu |
-| `componentType` | Discord component type number |
-| `values` | Array of selected values (select menus only; empty for buttons) |
-| `messageId` | ID of the message that contained the component |
-
-**Modal Submit** adds:
-
-| Field | Description |
-|-------|-------------|
-| `type` | `modal-submit` |
-| `interactionId` | Interaction ID (required for Respond to Interaction) |
-| `interactionToken` | Interaction token (required for Respond to Interaction) |
-| `applicationId` | Bot application ID |
-| `customId` | Custom ID set on the modal |
-| `fields` | Array of `{ customId, value }` objects for each submitted form field |
-
 ---
 
-### Discord Bot
+### Operations
 
-Performs actions on a Discord bot. Requires **Discord Bot API** credentials.
-
-#### Operation: Send Message
-
+#### Send Message
 Sends a message to a guild channel or a user DM.
 
 | Parameter | Description |
@@ -186,8 +84,7 @@ Sends a message to a guild channel or a user DM.
 
 Output: `{ operation, channelId, messageId, content }`
 
-#### Operation: Register Slash Command
-
+#### Register Slash Command
 Registers or updates a slash command for the bot. Can be guild-scoped (instant) or global (up to 1 hour to propagate).
 
 | Parameter | Description |
@@ -199,8 +96,7 @@ Registers or updates a slash command for the bot. Can be guild-scoped (instant) 
 
 Output: `{ operation, commandId, commandName, scope, guildId }`
 
-#### Operation: Respond to Interaction
-
+#### Respond to Interaction
 Sends a response to a Discord slash command, button, select menu, or modal interaction. Must be called within 15 minutes of the interaction (3 seconds if not auto-acknowledged by the trigger).
 
 | Parameter | Description |
@@ -255,21 +151,13 @@ Output: `{ operation, interactionId, responded: true }`
 
 ---
 
-## Development
-
-```bash
-npm install
-npm run build   # compile TypeScript + copy icons
-npm run lint    # run ESLint checks
-npm run dev     # watch mode for TypeScript
-```
-
----
-
 ## Notes
 
 - One Discord WebSocket connection is maintained per unique bot token. All n8n workflows that share the same credentials (same token) reuse that single connection — no matter how many trigger or action nodes reference it. To run a second independent bot, create a second Discord application and a second set of `Discord Bot API` credentials with its own token.
 - Discord interaction responses must be sent within 3 seconds of receipt. Enable **Auto Acknowledge Interactions** on the trigger so the workflow has up to 15 minutes to respond via **Respond to Interaction**.
 - Guild-scoped slash commands register instantly. Global commands can take up to 1 hour to appear in Discord.
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
-- npm publishing can be automated via GitHub Actions by pushing a version tag (for example `v1.0.5`).
+
+## Milestone Versions
+- v1.1.0: Most of the triggers have been validated with exception of Component Interaction and Modal Submit.
+- v1.0.0: Initial build and testing.
