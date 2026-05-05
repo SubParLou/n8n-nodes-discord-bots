@@ -655,7 +655,8 @@ export class DiscordBotTrigger implements INodeType {
       if (!memberRoles) {
         return false;
       }
-      return roleIds.some((id) => memberRoles.has(id));
+      // Role IDs in discord.js cache are typically strings, matching the type of roleIds array elements.
+      return roleIds.some((id) => (memberRoles as Map<string, unknown>).has(id));
     };
 
     console.log(`[DiscordBotTrigger] Registering ${event} listener | guildIds=${JSON.stringify(guildIds)} | channelIds=${JSON.stringify(channelIds)} | pattern=${pattern}`);
@@ -686,14 +687,21 @@ export class DiscordBotTrigger implements INodeType {
               return;
             }
 
-            const isDirectMessage = message.guildId === null || message.channel?.type === ChannelType.DM;
-            console.log(`[DiscordBotTrigger:messageCreate] isDirectMessage=${isDirectMessage}`);
-            if (event === 'channel-message' && isDirectMessage) {
-              console.log('[DiscordBotTrigger:messageCreate] filtered: is DM, but event=channel-message');
-              return;
-            }
-            if (event === 'direct-message' && !isDirectMessage) {
-              console.log('[DiscordBotTrigger:messageCreate] filtered: is guild message, but event=direct-message');
+            // Context check based on the expected trigger event type and message structure.
+            const contextOk = (event === 'channel-message' && !!message.guildId) ||
+                              (event === 'direct-message' && !message.guildId);
+
+            if (!contextOk) {
+              let reason: string;
+              if (event === 'channel-message') {
+                reason = `Expected guild context but found message with guildId=${message.guildId}`;
+              } else if (event === 'direct-message') {
+                reason = `Expected DM context, but received message in a guild (guildId=${message.guildId})`;
+              } else {
+                // Fallback for other cases where the event type might be mismatched.
+                reason = ''; 
+              }
+              console.log(`[DiscordBotTrigger:messageCreate] filtered: Context mismatch - ${reason}`);
               return;
             }
 
