@@ -21,8 +21,16 @@ import {
   registerSlashCommand,
 } from './clientManager';
 import type { DiscordBotCredentials } from './types';
+import {
+  buildAllComponentsFromUi,
+  buildEmbedsFromUi,
+  type AutoSelectMenuUiParams,
+  type ButtonUiParams,
+  type EmbedUiParams,
+  type StringSelectMenuUiParams,
+} from './messageBuilder';
 
-type Operation = 'send-message' | 'register-slash-command' | 'respond-to-interaction';
+type Operation = 'send-message' | 'update-message' | 'register-slash-command' | 'respond-to-interaction';
 
 function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFunctions): T {
   if (!value) {
@@ -34,20 +42,6 @@ function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFu
   } catch (error) {
     throw new NodeOperationError(context.getNode(), `Invalid JSON in ${fieldName}: ${(error as Error).message}`);
   }
-}
-
-function parseEmbedColor(value: string, context: IExecuteFunctions): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
-    throw new NodeOperationError(context.getNode(), 'Embed Color must be a 6-digit hex value like #5865F2');
-  }
-
-  return Number.parseInt(normalized, 16);
 }
 
 function isAlreadyAcknowledgedInteractionError(error: unknown): boolean {
@@ -89,9 +83,10 @@ export class DiscordBot implements INodeType {
         noDataExpression: true,
         default: 'send-message',
         options: [
-          { name: 'Send Message', value: 'send-message' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
           { name: 'Respond to Interaction', value: 'respond-to-interaction' },
+          { name: 'Send Message', value: 'send-message' },
+          { name: 'Update Message', value: 'update-message' },
         ],
       },
       {
@@ -165,10 +160,590 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'respond-to-interaction'],
+            operation: ['send-message', 'respond-to-interaction', 'update-message'],
           },
         },
         default: '',
+      },
+      // ─── Update Message targeting fields ───────────────────────────────────
+      {
+        displayName: 'Guild Names or IDs',
+        name: 'updateGuildIds',
+        type: 'multiOptions',
+        typeOptions: {
+          loadOptionsMethod: 'getGuilds',
+        },
+        displayOptions: {
+          show: {
+            operation: ['update-message'],
+          },
+        },
+        default: [],
+        description: 'Used to load channels. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Channel Name or ID',
+        name: 'updateChannelId',
+        type: 'options',
+        description: 'The channel containing the message to edit. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+        typeOptions: {
+          loadOptionsMethod: 'getUpdateChannels',
+          loadOptionsDependsOn: ['updateGuildIds'],
+        },
+        displayOptions: {
+          show: {
+            operation: ['update-message'],
+          },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Message ID',
+        name: 'updateMessageId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['update-message'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the message to edit',
+      },
+      // ─── Send Message Payload Mode ─────────────────────────────────────────
+      {
+        displayName: 'Message Payload Mode',
+        name: 'payloadMode',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'update-message'],
+          },
+        },
+        default: 'builder',
+        options: [
+          {
+            name: 'Raw JSON',
+            value: 'raw-json',
+            description: 'Provide Embeds JSON and Components JSON directly as raw Discord API arrays',
+          },
+          {
+            name: 'Builder',
+            value: 'builder',
+            description: 'Use the visual embed and button builders below',
+          },
+          {
+            name: 'Builder + Advanced JSON Merge',
+            value: 'builder-merge',
+            description: 'Build from UI fields and also merge additional raw JSON embeds/components',
+          },
+        ],
+      },
+      // ─── Embed Builder (send-message builder modes) ────────────────────────
+      {
+        displayName: 'Embeds',
+        name: 'embedBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Embed',
+        description: 'Up to 10 embeds per message. Empty fields are omitted.',
+        options: [
+          {
+            displayName: 'Embed',
+            name: 'embed',
+            values: [
+											{
+												displayName: 'Author Icon URL',
+												name: 'authorIconUrl',
+												type: 'string',
+												default: '',
+												description: 'Small icon shown to the left of the author name',
+											},
+											{
+												displayName: 'Author Name',
+												name: 'authorName',
+												type: 'string',
+												default: '',
+												description: 'Author name shown above the embed title (max 256 characters)',
+											},
+											{
+												displayName: 'Author URL',
+												name: 'authorUrl',
+												type: 'string',
+												default: '',
+												description: 'URL the author name links to',
+											},
+											{
+												displayName: 'Color',
+												name: 'color',
+												type: 'color',
+												default: '',
+												description: 'Embed sidebar color, for example	#5865F2',
+											},
+											{
+												displayName: 'Description',
+												name: 'description',
+												type: 'string',
+												default: '',
+												description: 'Embed description (max 4096 characters)',
+											},
+											{
+												displayName: 'Embed Fields',
+												name: 'embedFields',
+												type: 'fixedCollection',
+												default: {},
+												placeholder: 'Add Field',
+												description: 'Up to 25 key-value fields inside the embed',
+												options: [
+													{
+														displayName: 'Field',
+														name: 'field',
+															values:	[
+																	{
+																		displayName: 'Name',
+																		name: 'name',
+																		type: 'string',
+																		default: '',
+																			required:	true,
+																		description: 'Field title (max 256 characters)',
+																	},
+																	{
+																		displayName: 'Value',
+																		name: 'value',
+																		type: 'string',
+																		default: '',
+																			required:	true,
+																		description: 'Field content (max 1024 characters)',
+																	},
+																	{
+																		displayName: 'Inline',
+																		name: 'inline',
+																		type: 'boolean',
+																		default: false,
+																		description: 'Whether to display this field inline alongside adjacent inline fields',
+																	},
+																]
+													},
+													]
+											},
+											{
+												displayName: 'Footer Icon URL',
+												name: 'footerIconUrl',
+												type: 'string',
+												default: '',
+												description: 'Small icon shown to the left of the footer text',
+											},
+											{
+												displayName: 'Footer Text',
+												name: 'footerText',
+												type: 'string',
+												default: '',
+												description: 'Text shown in the embed footer (max 2048 characters)',
+											},
+											{
+												displayName: 'Image URL',
+												name: 'imageUrl',
+												type: 'string',
+												default: '',
+												description: 'Large image displayed at the bottom of the embed',
+											},
+											{
+												displayName: 'Thumbnail Image URL',
+												name: 'thumbnailUrl',
+												type: 'string',
+												default: '',
+												description: 'Small image displayed in the upper-right corner of the embed',
+											},
+											{
+												displayName: 'Timestamp',
+												name: 'timestamp',
+												type: 'string',
+												default: '',
+												description: 'ISO 8601 timestamp shown in the footer, for example 2024-01-15T12:00:00.000Z. Leave empty to omit.',
+											},
+											{
+												displayName: 'Title',
+												name: 'title',
+												type: 'string',
+												default: '',
+												description: 'Embed title (max 256 characters)',
+											},
+											{
+												displayName: 'URL',
+												name: 'url',
+												type: 'string',
+												default: '',
+												description: 'URL the title links to',
+											},
+									],
+          },
+        ],
+      },
+      // ─── Button Builder (send-message + update-message builder modes) ───────
+      {
+        displayName: 'Buttons',
+        name: 'buttonBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Button',
+        description: 'Up to 25 buttons per message, auto-grouped into rows of 5. Link buttons require a URL; all others require a Custom ID.',
+        options: [
+          {
+            displayName: 'Button',
+            name: 'button',
+            values: [
+											{
+												displayName: 'Custom ID',
+												name: 'customId',
+												type: 'string',
+												default: '',
+												description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
+											},
+											{
+												displayName: 'Disabled',
+												name: 'disabled',
+												type: 'boolean',
+												default: false,
+											},
+											{
+												displayName: 'Emoji Animated',
+												name: 'emojiAnimated',
+												type: 'boolean',
+												default: false,
+												description: 'Whether the custom emoji is animated',
+											},
+											{
+												displayName: 'Emoji ID',
+												name: 'emojiId',
+												type: 'string',
+												default: '',
+												description: 'Discord snowflake ID for a custom server emoji',
+											},
+											{
+												displayName: 'Emoji Name',
+												name: 'emojiName',
+												type: 'string',
+												default: '',
+												description: 'Unicode emoji or custom emoji name to show on the button, for example	🎉	or wave',
+											},
+											{
+												displayName: 'Label',
+												name: 'label',
+												type: 'string',
+													required:	true,
+												default: '',
+											},
+											{
+												displayName: 'Style',
+												name: 'style',
+												type: 'options',
+												options: [
+													{
+														name: 'Primary (Blue)',
+														value: 1
+													},
+													{
+														name: 'Secondary (Grey)',
+														value: 2
+													},
+													{
+														name: 'Success (Green)',
+														value: 3
+													},
+													{
+														name: 'Danger (Red)',
+														value: 4
+													},
+													{
+														name: 'Link',
+														value: 5
+													},
+												],
+												default: 1
+											},
+											{
+												displayName: 'URL',
+												name: 'url',
+												type: 'string',
+												default: '',
+												description: 'Required for Link style buttons. Must be a valid URL.',
+											},
+									],
+          },
+        ],
+      },
+      // ─── String Select Menus (send-message + update-message builder modes) ──
+      {
+        displayName: 'String Select Menus',
+        name: 'stringSelectBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Select Menu',
+        description: 'Dropdown menus with your own custom options. Each select menu occupies one action row (max 5 action rows total across buttons and selects).',
+        options: [
+          {
+            displayName: 'Select Menu',
+            name: 'select',
+            values: [
+              {
+                displayName: 'Custom ID',
+                name: 'customId',
+                type: 'string',
+                required: true,
+                default: '',
+                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+              },
+              {
+                displayName: 'Disabled',
+                name: 'disabled',
+                type: 'boolean',
+                default: false,
+              },
+              {
+                displayName: 'Max Values',
+                name: 'maxValues',
+                type: 'number',
+                typeOptions: { minValue: 1, maxValue: 25 },
+                default: 1,
+                description: 'Maximum number of options the user can select (1–25)',
+              },
+              {
+                displayName: 'Min Values',
+                name: 'minValues',
+                type: 'number',
+                typeOptions: { minValue: 0, maxValue: 25 },
+                default: 1,
+                description: 'Minimum number of options the user must select (0–25)',
+              },
+              {
+                displayName: 'Placeholder',
+                name: 'placeholder',
+                type: 'string',
+                default: '',
+                description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
+              },
+              {
+                displayName: 'Select Options',
+                name: 'selectOptions',
+                type: 'fixedCollection',
+                typeOptions: { multipleValues: true },
+                required: true,
+                default: {},
+                placeholder: 'Add Option',
+                description: 'Up to 25 options shown in the dropdown',
+                options: [
+                  {
+                    displayName: 'Option',
+                    name: 'option',
+                    values: [
+                      {
+                        displayName: 'Default',
+                        name: 'default',
+                        type: 'boolean',
+                        default: false,
+                        description: 'Whether this option is pre-selected when the menu opens',
+                      },
+                      {
+                        displayName: 'Description',
+                        name: 'description',
+                        type: 'string',
+                        default: '',
+                        description: 'Short description shown below the label (max 100 characters)',
+                      },
+                      {
+                        displayName: 'Emoji Animated',
+                        name: 'emojiAnimated',
+                        type: 'boolean',
+                        default: false,
+                      },
+                      {
+                        displayName: 'Emoji ID',
+                        name: 'emojiId',
+                        type: 'string',
+                        default: '',
+                        description: 'Discord snowflake ID for a custom server emoji',
+                      },
+                      {
+                        displayName: 'Emoji Name',
+                        name: 'emojiName',
+                        type: 'string',
+                        default: '',
+                        description: 'Unicode emoji or custom emoji name, for example 🎉',
+                      },
+                      {
+                        displayName: 'Label',
+                        name: 'label',
+                        type: 'string',
+                        required: true,
+                        default: '',
+                        description: 'Text shown in the dropdown for this option',
+                      },
+                      {
+                        displayName: 'Value',
+                        name: 'value',
+                        type: 'string',
+                        required: true,
+                        default: '',
+                        description: 'The value your bot receives when this option is selected',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      // ─── Auto-Populated Select Menus (send-message + update-message) ─────────
+      {
+        displayName: 'Auto-Populated Select Menus',
+        name: 'autoSelectBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Auto Select Menu',
+        description: 'Dropdowns auto-populated by Discord with server members, roles, or channels. Each select menu occupies one action row.',
+        options: [
+          {
+            displayName: 'Select Menu',
+            name: 'select',
+            values: [
+              {
+                displayName: 'Channel Types',
+                name: 'channelTypes',
+                type: 'multiOptions',
+                default: [],
+                options: [
+                  { name: 'Announcement', value: 5 },
+                  { name: 'Category', value: 4 },
+                  { name: 'Forum', value: 15 },
+                  { name: 'Media', value: 16 },
+                  { name: 'Stage Voice', value: 13 },
+                  { name: 'Text', value: 0 },
+                  { name: 'Voice', value: 2 },
+                ],
+                description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
+              },
+              {
+                displayName: 'Custom ID',
+                name: 'customId',
+                type: 'string',
+                required: true,
+                default: '',
+                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+              },
+              {
+                displayName: 'Disabled',
+                name: 'disabled',
+                type: 'boolean',
+                default: false,
+              },
+              {
+                displayName: 'Max Values',
+                name: 'maxValues',
+                type: 'number',
+                typeOptions: { minValue: 1, maxValue: 25 },
+                default: 1,
+                description: 'Maximum number of items the user can select',
+              },
+              {
+                displayName: 'Min Values',
+                name: 'minValues',
+                type: 'number',
+                typeOptions: { minValue: 0, maxValue: 25 },
+                default: 1,
+                description: 'Minimum number of items the user must select',
+              },
+              {
+                displayName: 'Placeholder',
+                name: 'placeholder',
+                type: 'string',
+                default: '',
+                description: 'Greyed-out text shown when nothing is selected yet',
+              },
+              {
+                displayName: 'Type',
+                name: 'selectType',
+                type: 'options',
+                options: [
+                  { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
+                  { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
+                  { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
+                  { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
+                ],
+                default: 5,
+                description: 'The type of Discord auto-populated select menu',
+              },
+            ],
+          },
+        ],
+      },
+      // ─── Respond to Interaction Payload Mode ───────────────────────────────
+      {
+        displayName: 'Message Payload Mode',
+        name: 'replyPayloadMode',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+          },
+        },
+        default: 'builder',
+        options: [
+          {
+            name: 'Raw JSON',
+            value: 'raw-json',
+            description: 'Provide Embeds JSON and Components JSON directly as raw Discord API arrays',
+          },
+          {
+            name: 'Builder',
+            value: 'builder',
+            description: 'Use the visual embed and button builders below',
+          },
+          {
+            name: 'Builder + Advanced JSON Merge',
+            value: 'builder-merge',
+            description: 'Build from UI fields and also merge additional raw JSON embeds/components',
+          },
+        ],
       },
       {
         displayName: 'Embeds JSON',
@@ -176,11 +751,12 @@ export class DiscordBot implements INodeType {
         type: 'json',
         displayOptions: {
           show: {
-            operation: ['send-message', 'respond-to-interaction'],
+            operation: ['send-message', 'update-message'],
+            payloadMode: ['raw-json', 'builder-merge'],
           },
         },
         default: '[]',
-        description: 'JSON array of Discord embeds',
+        description: 'JSON array of Discord embeds. Used in Raw JSON mode and appended in Builder + Advanced JSON Merge mode.',
       },
       {
         displayName: 'Reply Embeds',
@@ -189,6 +765,7 @@ export class DiscordBot implements INodeType {
         displayOptions: {
           show: {
             operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
           },
         },
         default: {},
@@ -207,40 +784,147 @@ export class DiscordBot implements INodeType {
                 displayName: 'Embed',
                 name: 'embed',
                 values: [
-                  {
-                    displayName: 'Title',
-                    name: 'title',
-                    type: 'string',
-                    default: '',
-                  },
-                  {
-                    displayName: 'Description',
-                    name: 'description',
-                    type: 'string',
-                    typeOptions: {
-                      rows: 3,
-                    },
-                    default: '',
-                  },
-                  {
-                    displayName: 'URL',
-                    name: 'url',
-                    type: 'string',
-                    default: '',
-                  },
-                  {
-                    displayName: 'Color',
-                    name: 'color',
-                    type: 'color',
-                    default: '',
-                    description: 'Hex color, for example #5865F2',
-                  },
-                ],
+													{
+														displayName: 'Author Icon URL',
+														name: 'authorIconUrl',
+														type: 'string',
+														default: '',
+														description: 'Small icon shown to the left of the author name',
+													},
+													{
+														displayName: 'Author Name',
+														name: 'authorName',
+														type: 'string',
+														default: '',
+														description: 'Author name shown above the embed title (max 256 characters)',
+													},
+													{
+														displayName: 'Author URL',
+														name: 'authorUrl',
+														type: 'string',
+														default: '',
+														description: 'URL the author name links to',
+													},
+													{
+														displayName: 'Color',
+														name: 'color',
+														type: 'color',
+														default: '',
+														description: 'Embed sidebar color, for example	#5865F2',
+													},
+													{
+														displayName: 'Description',
+														name: 'description',
+														type: 'string',
+														default: '',
+														description: 'Embed description (max 4096 characters)',
+													},
+													{
+														displayName: 'Embed Fields',
+														name: 'embedFields',
+														type: 'fixedCollection',
+														default: {},
+														placeholder: 'Add Field',
+														description: 'Up to 25 key-value fields inside the embed',
+														options: [
+																	{
+																		displayName: 'Field',
+																		name: 'field',
+																			values:	[
+																			{
+																				displayName: 'Name',
+																				name: 'name',
+																				type: 'string',
+																				default: '',
+																					required:	true,
+																				description: 'Field title (max 256 characters)',
+																			},
+																			{
+																				displayName: 'Value',
+																				name: 'value',
+																				type: 'string',
+																				default: '',
+																					required:	true,
+																				description: 'Field content (max 1024 characters)',
+																			},
+																			{
+																				displayName: 'Inline',
+																				name: 'inline',
+																				type: 'boolean',
+																				default: false,
+																			},
+																		]
+																	},
+															]
+													},
+													{
+														displayName: 'Footer Icon URL',
+														name: 'footerIconUrl',
+														type: 'string',
+														default: '',
+														description: 'Small icon shown to the left of the footer text',
+													},
+													{
+														displayName: 'Footer Text',
+														name: 'footerText',
+														type: 'string',
+														default: '',
+														description: 'Text shown in the embed footer (max 2048 characters)',
+													},
+													{
+														displayName: 'Image URL',
+														name: 'imageUrl',
+														type: 'string',
+														default: '',
+														description: 'Large image displayed at the bottom of the embed',
+													},
+													{
+														displayName: 'Thumbnail Image URL',
+														name: 'thumbnailUrl',
+														type: 'string',
+														default: '',
+														description: 'Small image displayed in the upper-right corner of the embed',
+													},
+													{
+														displayName: 'Timestamp',
+														name: 'timestamp',
+														type: 'string',
+														default: '',
+														description: 'ISO 8601 timestamp shown in the footer. Leave empty to omit.',
+													},
+													{
+														displayName: 'Title',
+														name: 'title',
+														type: 'string',
+														default: '',
+														description: 'Embed title (max 256 characters)',
+													},
+													{
+														displayName: 'URL',
+														name: 'url',
+														type: 'string',
+														default: '',
+														description: 'URL the title links to',
+													},
+													],
               },
             ],
           },
         ],
-        description: 'Optional builder for common embed fields',
+        description: 'Optional embed builder. When fields are added here they take precedence over Embeds JSON.',
+      },
+      {
+        displayName: 'Embeds JSON',
+        name: 'replyEmbedsJson',
+        type: 'json',
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['raw-json', 'builder-merge'],
+          },
+        },
+        default: '[]',
+        description: 'JSON array of Discord embeds. Used in Raw JSON mode and appended in Builder + Advanced JSON Merge mode.',
       },
       {
         displayName: 'Components JSON',
@@ -248,11 +932,12 @@ export class DiscordBot implements INodeType {
         type: 'json',
         displayOptions: {
           show: {
-            operation: ['send-message', 'respond-to-interaction'],
+            operation: ['send-message', 'update-message'],
+            payloadMode: ['raw-json', 'builder-merge'],
           },
         },
         default: '[]',
-        description: 'JSON array for buttons, selects, or modal components',
+        description: 'JSON array for buttons, selects, or modal components. Used in Raw JSON mode and appended in Builder + Advanced JSON Merge mode.',
       },
       {
         displayName: 'Reply Components',
@@ -261,6 +946,7 @@ export class DiscordBot implements INodeType {
         displayOptions: {
           show: {
             operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
           },
         },
         default: {},
@@ -279,52 +965,324 @@ export class DiscordBot implements INodeType {
                 displayName: 'Button',
                 name: 'button',
                 values: [
+													{
+														displayName: 'Custom ID',
+														name: 'customId',
+														type: 'string',
+														default: '',
+														description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
+													},
+													{
+														displayName: 'Disabled',
+														name: 'disabled',
+														type: 'boolean',
+														default: false,
+													},
+													{
+														displayName: 'Emoji Animated',
+														name: 'emojiAnimated',
+														type: 'boolean',
+														default: false,
+														description: 'Whether the custom emoji is animated',
+													},
+													{
+														displayName: 'Emoji ID',
+														name: 'emojiId',
+														type: 'string',
+														default: '',
+														description: 'Discord snowflake ID for a custom server emoji',
+													},
+													{
+														displayName: 'Emoji Name',
+														name: 'emojiName',
+														type: 'string',
+														default: '',
+														description: 'Unicode emoji or custom emoji name to show on the button, for example	🎉	or wave',
+													},
+													{
+														displayName: 'Label',
+														name: 'label',
+														type: 'string',
+															required:	true,
+														default: '',
+													},
+													{
+														displayName: 'Style',
+														name: 'style',
+														type: 'options',
+														options: [
+																	{
+																		name: 'Primary (Blue)',
+																		value: 1
+																	},
+																	{
+																		name: 'Secondary (Grey)',
+																		value: 2
+																	},
+																	{
+																		name: 'Success (Green)',
+																		value: 3
+																	},
+																	{
+																		name: 'Danger (Red)',
+																		value: 4
+																	},
+																	{
+																		name: 'Link',
+																		value: 5
+																	},
+																],
+														default: 1
+													},
+													{
+														displayName: 'URL',
+														name: 'url',
+														type: 'string',
+														default: '',
+														description: 'Required for Link style buttons',
+													},
+													],
+              },
+            ],
+          },
+        ],
+        description: 'Optional button builder. Buttons are grouped into rows of up to 5. When buttons are added here they take precedence over Components JSON.',
+      },
+      // ─── String Select Menus (respond-to-interaction builder modes) ─────────
+      {
+        displayName: 'String Select Menus',
+        name: 'replyStringSelectBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Select Menu',
+        description: 'Dropdown menus with your own custom options. Each select menu occupies one action row (max 5 action rows total).',
+        options: [
+          {
+            displayName: 'Select Menu',
+            name: 'select',
+            values: [
+              {
+                displayName: 'Custom ID',
+                name: 'customId',
+                type: 'string',
+                required: true,
+                default: '',
+                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+              },
+              {
+                displayName: 'Disabled',
+                name: 'disabled',
+                type: 'boolean',
+                default: false,
+              },
+              {
+                displayName: 'Max Values',
+                name: 'maxValues',
+                type: 'number',
+                typeOptions: { minValue: 1, maxValue: 25 },
+                default: 1,
+                description: 'Maximum number of options the user can select (1–25)',
+              },
+              {
+                displayName: 'Min Values',
+                name: 'minValues',
+                type: 'number',
+                typeOptions: { minValue: 0, maxValue: 25 },
+                default: 1,
+                description: 'Minimum number of options the user must select (0–25)',
+              },
+              {
+                displayName: 'Placeholder',
+                name: 'placeholder',
+                type: 'string',
+                default: '',
+                description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
+              },
+              {
+                displayName: 'Select Options',
+                name: 'selectOptions',
+                type: 'fixedCollection',
+                typeOptions: { multipleValues: true },
+                required: true,
+                default: {},
+                placeholder: 'Add Option',
+                description: 'Up to 25 options shown in the dropdown',
+                options: [
                   {
-                    displayName: 'Custom ID',
-                    name: 'customId',
-                    type: 'string',
-                    default: '',
-                    description: 'Required for non-link buttons',
-                  },
-                  {
-                    displayName: 'Disabled',
-                    name: 'disabled',
-                    type: 'boolean',
-                    default: false,
-                  },
-                  {
-                    displayName: 'Label',
-                    name: 'label',
-                    type: 'string',
-                    required: true,
-                    default: '',
-                  },
-                  {
-                    displayName: 'Style',
-                    name: 'style',
-                    type: 'options',
-                    options: [
-                      { name: 'Primary', value: 1 },
-                      { name: 'Secondary', value: 2 },
-                      { name: 'Success', value: 3 },
-                      { name: 'Danger', value: 4 },
-                      { name: 'Link', value: 5 },
+                    displayName: 'Option',
+                    name: 'option',
+                    values: [
+                      {
+                        displayName: 'Default',
+                        name: 'default',
+                        type: 'boolean',
+                        default: false,
+                        description: 'Whether this option is pre-selected when the menu opens',
+                      },
+                      {
+                        displayName: 'Description',
+                        name: 'description',
+                        type: 'string',
+                        default: '',
+                        description: 'Short description shown below the label (max 100 characters)',
+                      },
+                      {
+                        displayName: 'Emoji Animated',
+                        name: 'emojiAnimated',
+                        type: 'boolean',
+                        default: false,
+                      },
+                      {
+                        displayName: 'Emoji ID',
+                        name: 'emojiId',
+                        type: 'string',
+                        default: '',
+                        description: 'Discord snowflake ID for a custom server emoji',
+                      },
+                      {
+                        displayName: 'Emoji Name',
+                        name: 'emojiName',
+                        type: 'string',
+                        default: '',
+                        description: 'Unicode emoji or custom emoji name, for example 🎉',
+                      },
+                      {
+                        displayName: 'Label',
+                        name: 'label',
+                        type: 'string',
+                        required: true,
+                        default: '',
+                        description: 'Text shown in the dropdown for this option',
+                      },
+                      {
+                        displayName: 'Value',
+                        name: 'value',
+                        type: 'string',
+                        required: true,
+                        default: '',
+                        description: 'The value your bot receives when this option is selected',
+                      },
                     ],
-                    default: 1,
-                  },
-                  {
-                    displayName: 'URL',
-                    name: 'url',
-                    type: 'string',
-                    default: '',
-                    description: 'Required for link buttons',
                   },
                 ],
               },
             ],
           },
         ],
-        description: 'Optional button builder for interaction replies',
+      },
+      // ─── Auto-Populated Select Menus (respond-to-interaction builder modes) ─
+      {
+        displayName: 'Auto-Populated Select Menus',
+        name: 'replyAutoSelectBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Auto Select Menu',
+        description: 'Dropdowns auto-populated by Discord with server members, roles, or channels. Each select menu occupies one action row.',
+        options: [
+          {
+            displayName: 'Select Menu',
+            name: 'select',
+            values: [
+              {
+                displayName: 'Channel Types',
+                name: 'channelTypes',
+                type: 'multiOptions',
+                default: [],
+                options: [
+                  { name: 'Announcement', value: 5 },
+                  { name: 'Category', value: 4 },
+                  { name: 'Forum', value: 15 },
+                  { name: 'Media', value: 16 },
+                  { name: 'Stage Voice', value: 13 },
+                  { name: 'Text', value: 0 },
+                  { name: 'Voice', value: 2 },
+                ],
+                description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
+              },
+              {
+                displayName: 'Custom ID',
+                name: 'customId',
+                type: 'string',
+                required: true,
+                default: '',
+                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+              },
+              {
+                displayName: 'Disabled',
+                name: 'disabled',
+                type: 'boolean',
+                default: false,
+              },
+              {
+                displayName: 'Max Values',
+                name: 'maxValues',
+                type: 'number',
+                typeOptions: { minValue: 1, maxValue: 25 },
+                default: 1,
+                description: 'Maximum number of items the user can select',
+              },
+              {
+                displayName: 'Min Values',
+                name: 'minValues',
+                type: 'number',
+                typeOptions: { minValue: 0, maxValue: 25 },
+                default: 1,
+                description: 'Minimum number of items the user must select',
+              },
+              {
+                displayName: 'Placeholder',
+                name: 'placeholder',
+                type: 'string',
+                default: '',
+                description: 'Greyed-out text shown when nothing is selected yet',
+              },
+              {
+                displayName: 'Type',
+                name: 'selectType',
+                type: 'options',
+                options: [
+                  { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
+                  { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
+                  { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
+                  { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
+                ],
+                default: 5,
+                description: 'The type of Discord auto-populated select menu',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Components JSON',
+        name: 'replyComponentsJson',
+        type: 'json',
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['raw-json', 'builder-merge'],
+          },
+        },
+        default: '[]',
+        description: 'JSON array for buttons, selects, or modal components. Used in Raw JSON mode and appended in Builder + Advanced JSON Merge mode.',
       },
       {
         displayName: 'Ephemeral',
@@ -507,6 +1465,14 @@ export class DiscordBot implements INodeType {
         }
         return loadChannelOptions(credentials, guildIds);
       },
+      async getUpdateChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+        const guildIds = this.getNodeParameter('updateGuildIds', 0) as string[];
+        if (!guildIds.length) {
+          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+        }
+        return loadChannelOptions(credentials, guildIds);
+      },
     },
   };
 
@@ -522,12 +1488,53 @@ export class DiscordBot implements INodeType {
         const client = await getClient(credentials);
         const targetType = this.getNodeParameter('targetType', i) as 'channel' | 'user-dm';
         const content = this.getNodeParameter('content', i, '') as string;
-        const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-        const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
+        const payloadMode = this.getNodeParameter('payloadMode', i, 'builder') as
+          | 'builder'
+          | 'raw-json'
+          | 'builder-merge';
 
-        const embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-        const components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+        let embeds: APIEmbed[] = [];
+        let components: APIActionRowComponent<any>[] = [];
 
+        if (payloadMode === 'raw-json') {
+          const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
+          const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
+          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
+          components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+        } else {
+          const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
+            embed?: EmbedUiParams[];
+          };
+          const buttonBuilderParam = this.getNodeParameter('buttonBuilder', i, {}) as {
+            button?: ButtonUiParams[];
+          };
+          const stringSelectParam = this.getNodeParameter('stringSelectBuilder', i, {}) as {
+            select?: StringSelectMenuUiParams[];
+          };
+          const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
+            select?: AutoSelectMenuUiParams[];
+          };
+          embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
+          components = buildAllComponentsFromUi(
+            buttonBuilderParam.button ?? [],
+            stringSelectParam.select ?? [],
+            autoSelectParam.select ?? [],
+            this.getNode(),
+          ) as APIActionRowComponent<any>[];
+
+          if (payloadMode === 'builder-merge') {
+            const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
+            const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
+            const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
+            const extraComponents = parseJsonField<APIActionRowComponent<any>[]>(
+              componentsJson,
+              'Components JSON',
+              this,
+            );
+            embeds = [...embeds, ...extraEmbeds];
+            components = [...components, ...extraComponents];
+          }
+        }
         if (!content && !embeds.length && !components.length) {
           throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components');
         }
@@ -573,10 +1580,107 @@ export class DiscordBot implements INodeType {
         continue;
       }
 
+      if (operation === 'update-message') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('updateChannelId', i) as string;
+        const messageId = this.getNodeParameter('updateMessageId', i) as string;
+        const content = this.getNodeParameter('content', i, '') as string;
+        const payloadMode = this.getNodeParameter('payloadMode', i, 'builder') as
+          | 'builder'
+          | 'raw-json'
+          | 'builder-merge';
+
+        let embeds: APIEmbed[] = [];
+        let components: APIActionRowComponent<any>[] = [];
+
+        if (payloadMode === 'raw-json') {
+          const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
+          const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
+          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
+          components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+        } else {
+          const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
+            embed?: EmbedUiParams[];
+          };
+          const buttonBuilderParam = this.getNodeParameter('buttonBuilder', i, {}) as {
+            button?: ButtonUiParams[];
+          };
+          const stringSelectParam = this.getNodeParameter('stringSelectBuilder', i, {}) as {
+            select?: StringSelectMenuUiParams[];
+          };
+          const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
+            select?: AutoSelectMenuUiParams[];
+          };
+          embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
+          components = buildAllComponentsFromUi(
+            buttonBuilderParam.button ?? [],
+            stringSelectParam.select ?? [],
+            autoSelectParam.select ?? [],
+            this.getNode(),
+          ) as APIActionRowComponent<any>[];
+
+          if (payloadMode === 'builder-merge') {
+            const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
+            const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
+            const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
+            const extraComponents = parseJsonField<APIActionRowComponent<any>[]>(
+              componentsJson,
+              'Components JSON',
+              this,
+            );
+            embeds = [...embeds, ...extraEmbeds];
+            components = [...components, ...extraComponents];
+          }
+        }
+
+        if (!content && !embeds.length && !components.length) {
+          throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components to update the message');
+        }
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+        const message = await (channel as any).messages.fetch(messageId);
+        await message.edit({
+          content: content || null,
+          embeds,
+          components: components as any,
+        });
+
+        returnData.push({
+          json: {
+            operation,
+            channelId,
+            messageId,
+            content,
+          },
+          pairedItem: { item: i },
+        });
+
+        continue;
+      }
+
       if (operation === 'register-slash-command') {
         const commandName = this.getNodeParameter('commandName', i) as string;
         const commandDescription = this.getNodeParameter('commandDescription', i) as string;
         const commandGuildId = this.getNodeParameter('commandGuildId', i, '') as string;
+
+        if (!commandName.trim()) {
+          throw new NodeOperationError(this.getNode(), 'Command Name is required');
+        }
+        if (!/^[\w-]{1,32}$/.test(commandName)) {
+          throw new NodeOperationError(
+            this.getNode(),
+            'Command Name must be 1–32 characters and contain only lowercase letters, numbers, hyphens, or underscores',
+          );
+        }
+        if (commandName !== commandName.toLowerCase()) {
+          throw new NodeOperationError(
+            this.getNode(),
+            'Command Name must be lowercase (Discord requirement)',
+          );
+        }
 
         let commandOptions: ApplicationCommandOptionData[] = [];
 
@@ -632,9 +1736,11 @@ export class DiscordBot implements INodeType {
       if (operation === 'respond-to-interaction') {
         const useInputInteractionData = this.getNodeParameter('useInputInteractionData', i, true) as boolean;
         const content = this.getNodeParameter('content', i, '') as string;
-        const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-        const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
         const ephemeral = this.getNodeParameter('ephemeral', i, false) as boolean;
+        const replyPayloadMode = this.getNodeParameter('replyPayloadMode', i, 'builder') as
+          | 'builder'
+          | 'raw-json'
+          | 'builder-merge';
 
         let interactionId: string;
         let interactionToken: string;
@@ -655,82 +1761,66 @@ export class DiscordBot implements INodeType {
           interactionToken = this.getNodeParameter('interactionToken', i) as string;
         }
 
-        const replyEmbedsCollection = this.getNodeParameter('replyEmbeds', i, {}) as {
-          embeds?: { embed?: Array<{ title: string; description: string; url: string; color: string }> };
-        };
-        const replyButtonsCollection = this.getNodeParameter('replyComponents', i, {}) as {
-          buttons?: {
-            button?: Array<{ label: string; style: number; customId: string; url: string; disabled: boolean }>;
-          };
-        };
-
         let embeds: APIEmbed[];
-        if (
-          replyEmbedsCollection.embeds?.embed &&
-          Array.isArray(replyEmbedsCollection.embeds.embed) &&
-          replyEmbedsCollection.embeds.embed.length > 0
-        ) {
-          embeds = replyEmbedsCollection.embeds.embed.map((embed) => ({
-            title: embed.title || undefined,
-            description: embed.description || undefined,
-            url: embed.url || undefined,
-            color: parseEmbedColor(embed.color, this),
-          }));
-        } else {
-          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-        }
-
         let components: APIActionRowComponent<any>[];
-        if (
-          replyButtonsCollection.buttons?.button &&
-          Array.isArray(replyButtonsCollection.buttons.button) &&
-          replyButtonsCollection.buttons.button.length > 0
-        ) {
-          components = replyButtonsCollection.buttons.button.map((button) => {
-            if (button.style === 5) {
-              if (!button.url.trim()) {
-                throw new NodeOperationError(this.getNode(), 'Link buttons require a URL');
-              }
-              return {
-                type: 1,
-                components: [
-                  {
-                    type: 2,
-                    style: button.style,
-                    label: button.label,
-                    url: button.url,
-                    disabled: button.disabled,
-                  },
-                ],
-              };
-            }
 
-            if (!button.customId.trim()) {
-              throw new NodeOperationError(this.getNode(), 'Non-link buttons require a Custom ID');
-            }
-
-            return {
-              type: 1,
-              components: [
-                {
-                  type: 2,
-                  style: button.style,
-                  label: button.label,
-                  custom_id: button.customId,
-                  disabled: button.disabled,
-                },
-              ],
-            };
-          }) as unknown as APIActionRowComponent<any>[];
+        if (replyPayloadMode === 'raw-json') {
+          const replyEmbedsJson = this.getNodeParameter('replyEmbedsJson', i, '[]') as string;
+          const replyComponentsJson = this.getNodeParameter('replyComponentsJson', i, '[]') as string;
+          // Backward compat: if new fields are still at default, fall back to embedsJson / componentsJson
+          const embedsJsonFallback = this.getNodeParameter('embedsJson', i, '[]') as string;
+          const componentsJsonFallback = this.getNodeParameter('componentsJson', i, '[]') as string;
+          embeds = parseJsonField<APIEmbed[]>(
+            replyEmbedsJson !== '[]' ? replyEmbedsJson : embedsJsonFallback,
+            'Embeds JSON',
+            this,
+          );
+          components = parseJsonField<APIActionRowComponent<any>[]>(
+            replyComponentsJson !== '[]' ? replyComponentsJson : componentsJsonFallback,
+            'Components JSON',
+            this,
+          );
         } else {
-          components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+          const replyEmbedsCollection = this.getNodeParameter('replyEmbeds', i, {}) as {
+            embeds?: { embed?: EmbedUiParams[] };
+          };
+          const replyButtonsCollection = this.getNodeParameter('replyComponents', i, {}) as {
+            buttons?: { button?: ButtonUiParams[] };
+          };
+          const replyStringSelectCollection = this.getNodeParameter('replyStringSelectBuilder', i, {}) as {
+            select?: StringSelectMenuUiParams[];
+          };
+          const replyAutoSelectCollection = this.getNodeParameter('replyAutoSelectBuilder', i, {}) as {
+            select?: AutoSelectMenuUiParams[];
+          };
+          embeds = buildEmbedsFromUi(replyEmbedsCollection.embeds?.embed ?? [], this.getNode());
+          components = buildAllComponentsFromUi(
+            replyButtonsCollection.buttons?.button ?? [],
+            replyStringSelectCollection.select ?? [],
+            replyAutoSelectCollection.select ?? [],
+            this.getNode(),
+          ) as APIActionRowComponent<any>[];
+
+          if (replyPayloadMode === 'builder-merge') {
+            const replyEmbedsJson = this.getNodeParameter('replyEmbedsJson', i, '[]') as string;
+            const replyComponentsJson = this.getNodeParameter('replyComponentsJson', i, '[]') as string;
+            const extraEmbeds = parseJsonField<APIEmbed[]>(replyEmbedsJson, 'Embeds JSON', this);
+            const extraComponents = parseJsonField<APIActionRowComponent<any>[]>(
+              replyComponentsJson,
+              'Components JSON',
+              this,
+            );
+            embeds = [...embeds, ...extraEmbeds];
+            components = [...components, ...extraComponents];
+          }
         }
+
 
         const responseBody = {
           content: content || undefined,
           embeds,
           components,
-          flags: ephemeral ? 64 : 0,
+          ...(ephemeral ? { flags: 64 } : {}),
         };
 
         const rest = new REST({ version: '10' });

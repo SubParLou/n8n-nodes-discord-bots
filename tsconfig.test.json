@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "dist-test"
+  },
+  "include": [
+    "nodes/**/*",
+    "credentials/**/*",
+    "index.ts"
+  ]
+}
