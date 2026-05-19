@@ -54,7 +54,12 @@ type Operation =
   | 'set-nickname'
   | 'timeout-member'
   | 'unban-member'
-  | 'unpin-message';
+  | 'unpin-message'
+  | 'add-thread-member'
+  | 'create-thread'
+  | 'create-thread-from-message'
+  | 'edit-thread'
+  | 'remove-thread-member';
 
 function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFunctions): T {
   if (!value) {
@@ -109,9 +114,13 @@ export class DiscordBot implements INodeType {
         options: [
           { name: 'Add Reaction', value: 'add-reaction' },
           { name: 'Add Role to Member', value: 'add-role' },
+          { name: 'Add Thread Member', value: 'add-thread-member' },
           { name: 'Ban Member', value: 'ban-member' },
           { name: 'Bulk Delete Messages', value: 'bulk-delete-messages' },
+          { name: 'Create Thread', value: 'create-thread' },
+          { name: 'Create Thread From Message', value: 'create-thread-from-message' },
           { name: 'Delete Message', value: 'delete-message' },
+          { name: 'Edit Thread', value: 'edit-thread' },
           { name: 'Fetch Member', value: 'fetch-member' },
           { name: 'Fetch Message', value: 'fetch-message' },
           { name: 'Fetch Message History', value: 'fetch-message-history' },
@@ -120,6 +129,7 @@ export class DiscordBot implements INodeType {
           { name: 'Register Slash Command', value: 'register-slash-command' },
           { name: 'Remove Own Reaction', value: 'remove-own-reaction' },
           { name: 'Remove Role From Member', value: 'remove-role' },
+          { name: 'Remove Thread Member', value: 'remove-thread-member' },
           { name: 'Respond to Interaction', value: 'respond-to-interaction' },
           { name: 'Send Message', value: 'send-message' },
           { name: 'Send Modal', value: 'send-modal' },
@@ -1833,6 +1843,198 @@ export class DiscordBot implements INodeType {
         default: '',
         description: 'New server nickname for this member. Leave empty to clear the existing nickname.',
       },
+
+      // ─── Thread Operation Fields ────────────────────────────────────────────
+      {
+        displayName: 'Guild Names or IDs',
+        name: 'threadCreateGuildIds',
+        type: 'multiOptions',
+        typeOptions: { loadOptionsMethod: 'getGuilds' },
+        displayOptions: {
+          show: { operation: ['create-thread', 'create-thread-from-message'] },
+        },
+        default: [],
+        description: 'Used to load channels. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Channel Name or ID',
+        name: 'threadCreateChannelId',
+        type: 'options',
+        description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+        typeOptions: { loadOptionsMethod: 'getThreadChannels', loadOptionsDependsOn: ['threadCreateGuildIds'] },
+        displayOptions: {
+          show: { operation: ['create-thread', 'create-thread-from-message'] },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Message ID',
+        name: 'threadSourceMessageId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-thread-from-message'] },
+        },
+        default: '',
+        required: true,
+        description: 'ID of the message to attach this thread to',
+      },
+      {
+        displayName: 'Thread Name',
+        name: 'threadName',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-thread', 'create-thread-from-message'] },
+        },
+        default: '',
+        required: true,
+        description: 'Name for the new thread (max 100 characters)',
+      },
+      {
+        displayName: 'Thread Type',
+        name: 'threadType',
+        type: 'options',
+        displayOptions: {
+          show: { operation: ['create-thread'] },
+        },
+        options: [
+          { name: 'Private Thread', value: 12 },
+          { name: 'Public Thread', value: 11 },
+        ],
+        default: 11,
+        description: 'Public threads are visible to all server members; private threads are invite-only',
+      },
+      {
+        displayName: 'Auto Archive Duration',
+        name: 'threadAutoArchiveDuration',
+        type: 'options',
+        displayOptions: {
+          show: { operation: ['create-thread', 'create-thread-from-message'] },
+        },
+        options: [
+          { name: '1 Day', value: 1440 },
+          { name: '1 Hour', value: 60 },
+          { name: '1 Week', value: 10080 },
+          { name: '3 Days', value: 4320 },
+        ],
+        default: 1440,
+        description: 'Archive the thread after this period of inactivity',
+      },
+      {
+        displayName: 'Invitable',
+        name: 'threadInvitable',
+        type: 'boolean',
+        displayOptions: {
+          show: { operation: ['create-thread'], threadType: [12] },
+        },
+        default: true,
+        description: 'Whether non-moderators can invite other members to this private thread',
+      },
+      {
+        displayName: 'Slowmode Seconds',
+        name: 'threadSlowmode',
+        type: 'number',
+        typeOptions: { minValue: 0, maxValue: 21600 },
+        displayOptions: {
+          show: { operation: ['create-thread', 'create-thread-from-message'] },
+        },
+        default: 0,
+        description: 'Seconds a member must wait between messages in this thread (0 to disable)',
+      },
+      {
+        displayName: 'Reason',
+        name: 'threadCreateReason',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-thread', 'create-thread-from-message'] },
+        },
+        default: '',
+        description: 'Reason for creating this thread (recorded in the guild audit log)',
+      },
+      {
+        displayName: 'Thread ID',
+        name: 'threadId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['edit-thread', 'add-thread-member', 'remove-thread-member'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the thread channel. Use <code>{{ $JSON.threadId }}</code> to pass from a trigger.',
+      },
+      {
+        displayName: 'User ID',
+        name: 'threadMemberUserId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['add-thread-member', 'remove-thread-member'] },
+        },
+        default: '',
+        required: true,
+        description: 'The Discord user ID to add or remove from the thread',
+      },
+      {
+        displayName: 'Thread Edits',
+        name: 'threadEditFields',
+        type: 'collection',
+        displayOptions: {
+          show: { operation: ['edit-thread'] },
+        },
+        default: {},
+        placeholder: 'Add Field',
+        description: 'Fields to update on the thread. At least one must be set.',
+        options: [
+          {
+            displayName: 'Archived',
+            name: 'archived',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to archive (true) or unarchive (false) the thread',
+          },
+          {
+            displayName: 'Auto Archive Duration',
+            name: 'autoArchiveDuration',
+            type: 'options',
+            options: [
+              { name: '1 Day', value: 1440 },
+              { name: '1 Hour', value: 60 },
+              { name: '1 Week', value: 10080 },
+              { name: '3 Days', value: 4320 },
+            ],
+            default: 1440,
+            description: 'Archive the thread after this period of inactivity',
+          },
+          {
+            displayName: 'Locked',
+            name: 'locked',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to lock the thread so only moderators can send messages',
+          },
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+            description: 'New name for the thread (max 100 characters)',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason for editing this thread (recorded in the guild audit log)',
+          },
+          {
+            displayName: 'Slowmode Seconds',
+            name: 'rateLimitPerUser',
+            type: 'number',
+            typeOptions: { minValue: 0, maxValue: 21600 },
+            default: 0,
+            description: 'Seconds a member must wait between messages (0 to disable)',
+          },
+        ],
+      },
     ],
   };
 
@@ -1869,6 +2071,14 @@ export class DiscordBot implements INodeType {
       async getHistoryChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
         const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
         const guildIds = this.getNodeParameter('historyGuildIds', 0) as string[];
+        if (!guildIds.length) {
+          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+        }
+        return loadChannelOptions(credentials, guildIds);
+      },
+      async getThreadChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+        const guildIds = this.getNodeParameter('threadCreateGuildIds', 0) as string[];
         if (!guildIds.length) {
           throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
         }
@@ -2586,6 +2796,137 @@ export class DiscordBot implements INodeType {
         await member.setNickname(nickname || null);
 
         returnData.push({ json: { operation, guildId, userId, nickname: nickname || null }, pairedItem: { item: i } });
+        continue;
+      }
+
+      // ─── Thread Operations ───────────────────────────────────────────────────
+
+      if (operation === 'create-thread-from-message') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('threadCreateChannelId', i) as string;
+        const messageId = this.getNodeParameter('threadSourceMessageId', i) as string;
+        const name = this.getNodeParameter('threadName', i) as string;
+        const autoArchiveDuration = this.getNodeParameter('threadAutoArchiveDuration', i, 1440) as number;
+        const rateLimitPerUser = this.getNodeParameter('threadSlowmode', i, 0) as number;
+        const reason = this.getNodeParameter('threadCreateReason', i, '') as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+        const message = await (channel as any).messages.fetch(messageId);
+        const thread = await message.startThread({
+          name,
+          autoArchiveDuration,
+          ...(rateLimitPerUser ? { rateLimitPerUser } : {}),
+          ...(reason ? { reason } : {}),
+        });
+
+        returnData.push({
+          json: {
+            operation,
+            threadId: thread.id,
+            threadName: thread.name,
+            parentChannelId: thread.parentId,
+            guildId: thread.guildId,
+            archived: thread.archived,
+            autoArchiveDuration: thread.autoArchiveDuration,
+            createdTimestamp: thread.createdTimestamp,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'create-thread') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('threadCreateChannelId', i) as string;
+        const name = this.getNodeParameter('threadName', i) as string;
+        const threadType = this.getNodeParameter('threadType', i, 11) as number;
+        const autoArchiveDuration = this.getNodeParameter('threadAutoArchiveDuration', i, 1440) as number;
+        const invitable = this.getNodeParameter('threadInvitable', i, true) as boolean;
+        const rateLimitPerUser = this.getNodeParameter('threadSlowmode', i, 0) as number;
+        const reason = this.getNodeParameter('threadCreateReason', i, '') as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('threads' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} does not support threads`);
+        }
+        const createOpts: Record<string, unknown> = { name, type: threadType, autoArchiveDuration };
+        if (rateLimitPerUser) createOpts.rateLimitPerUser = rateLimitPerUser;
+        if (reason) createOpts.reason = reason;
+        if (threadType === 12) createOpts.invitable = invitable; // 12 = PrivateThread
+
+        const thread = await (channel as any).threads.create(createOpts);
+
+        returnData.push({
+          json: {
+            operation,
+            threadId: thread.id,
+            threadName: thread.name,
+            parentChannelId: thread.parentId,
+            guildId: thread.guildId,
+            type: thread.type,
+            archived: thread.archived,
+            autoArchiveDuration: thread.autoArchiveDuration,
+            createdTimestamp: thread.createdTimestamp,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'edit-thread') {
+        const client = await getClient(credentials);
+        const threadId = this.getNodeParameter('threadId', i) as string;
+        const threadEditFields = this.getNodeParameter('threadEditFields', i, {}) as {
+          name?: string;
+          archived?: boolean;
+          locked?: boolean;
+          autoArchiveDuration?: number;
+          rateLimitPerUser?: number;
+          reason?: string;
+        };
+
+        const channel = await client.channels.fetch(threadId);
+        if (!channel || !channel.isThread()) {
+          throw new NodeOperationError(this.getNode(), `Channel ID ${threadId} is not a thread`);
+        }
+
+        const editOpts: Record<string, unknown> = {};
+        if (threadEditFields.name) editOpts.name = threadEditFields.name;
+        if (threadEditFields.archived !== undefined) editOpts.archived = threadEditFields.archived;
+        if (threadEditFields.locked !== undefined) editOpts.locked = threadEditFields.locked;
+        if (threadEditFields.autoArchiveDuration) editOpts.autoArchiveDuration = threadEditFields.autoArchiveDuration;
+        if (threadEditFields.rateLimitPerUser !== undefined) editOpts.rateLimitPerUser = threadEditFields.rateLimitPerUser;
+        if (threadEditFields.reason) editOpts.reason = threadEditFields.reason;
+
+        if (Object.keys(editOpts).length === 0) {
+          throw new NodeOperationError(this.getNode(), 'Add at least one field to edit (Name, Archived, Locked, etc.)');
+        }
+
+        await (channel as any).edit(editOpts);
+        returnData.push({ json: { operation, threadId, updated: true }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'add-thread-member' || operation === 'remove-thread-member') {
+        const client = await getClient(credentials);
+        const threadId = this.getNodeParameter('threadId', i) as string;
+        const userId = this.getNodeParameter('threadMemberUserId', i) as string;
+
+        const channel = await client.channels.fetch(threadId);
+        if (!channel || !channel.isThread()) {
+          throw new NodeOperationError(this.getNode(), `Channel ID ${threadId} is not a thread`);
+        }
+
+        if (operation === 'add-thread-member') {
+          await (channel as any).members.add(userId);
+        } else {
+          await (channel as any).members.remove(userId);
+        }
+
+        returnData.push({ json: { operation, threadId, userId }, pairedItem: { item: i } });
         continue;
       }
 

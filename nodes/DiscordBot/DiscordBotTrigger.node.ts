@@ -35,7 +35,10 @@ type TriggerType =
   | 'member-leave'
   | 'member-update'
   | 'message-delete'
-  | 'message-edit';
+  | 'message-edit'
+  | 'thread-create'
+  | 'thread-delete'
+  | 'thread-update';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -357,6 +360,9 @@ export class DiscordBotTrigger implements INodeType {
           { name: 'Reaction Added', value: 'reaction-add' },
           { name: 'Reaction Removed', value: 'reaction-remove' },
           { name: 'Slash Command', value: 'slash-command' },
+          { name: 'Thread Created', value: 'thread-create' },
+          { name: 'Thread Deleted', value: 'thread-delete' },
+          { name: 'Thread Updated', value: 'thread-update' },
         ],
         default: 'channel-message',
       },
@@ -369,7 +375,7 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit'],
+            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete'],
           },
         },
         default: [],
@@ -390,6 +396,22 @@ export class DiscordBotTrigger implements INodeType {
         },
         default: [],
         description: 'Only trigger for selected channels (leave empty for all). Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Parent Channel Names or IDs',
+        name: 'threadParentChannelIds',
+        type: 'multiOptions',
+        typeOptions: {
+          loadOptionsMethod: 'getChannels',
+          loadOptionsDependsOn: ['guildIds'],
+        },
+        displayOptions: {
+          show: {
+            event: ['thread-create', 'thread-update', 'thread-delete'],
+          },
+        },
+        default: [],
+        description: 'Only trigger for threads in selected parent channels (leave empty for all). Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
       },
       {
         displayName: 'From Role Names or IDs',
@@ -1073,6 +1095,94 @@ export class DiscordBotTrigger implements INodeType {
               userGlobalName: ban.user.globalName ?? null,
               userTag: ban.user.tag,
               userAvatarUrl: ban.user.displayAvatarURL(),
+            }),
+          ]);
+        }),
+      );
+    }
+
+    // ─── Thread Events ────────────────────────────────────────────────────────
+
+    if (event === 'thread-create') {
+      removeListeners.push(
+        addClientListener(client, 'threadCreate', async (thread, newlyCreated) => {
+          if (!newlyCreated) return; // ignore thread-list syncs on reconnect
+          if (!passGuildFilter(thread.guildId, thread.guild?.name ?? null)) return;
+
+          const parentChannelIds = normalizeSelectedValues(
+            this.getNodeParameter('threadParentChannelIds', []),
+          );
+          if (parentChannelIds.length > 0 && !parentChannelIds.includes(thread.parentId ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'thread-create',
+              threadId: thread.id,
+              threadName: thread.name,
+              parentChannelId: thread.parentId,
+              guildId: thread.guildId,
+              threadType: thread.type,
+              archived: thread.archived,
+              locked: thread.locked,
+              autoArchiveDuration: thread.autoArchiveDuration,
+              ownerId: thread.ownerId,
+              createdTimestamp: thread.createdTimestamp,
+              memberCount: thread.memberCount,
+              messageCount: thread.messageCount,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'thread-update') {
+      removeListeners.push(
+        addClientListener(client, 'threadUpdate', async (oldThread, newThread) => {
+          if (!passGuildFilter(newThread.guildId, newThread.guild?.name ?? null)) return;
+
+          const parentChannelIds = normalizeSelectedValues(
+            this.getNodeParameter('threadParentChannelIds', []),
+          );
+          if (parentChannelIds.length > 0 && !parentChannelIds.includes(newThread.parentId ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'thread-update',
+              threadId: newThread.id,
+              threadName: newThread.name,
+              parentChannelId: newThread.parentId,
+              guildId: newThread.guildId,
+              oldName: oldThread.name,
+              newName: newThread.name,
+              oldArchived: oldThread.archived,
+              newArchived: newThread.archived,
+              oldLocked: oldThread.locked,
+              newLocked: newThread.locked,
+              autoArchiveDuration: newThread.autoArchiveDuration,
+              memberCount: newThread.memberCount,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'thread-delete') {
+      removeListeners.push(
+        addClientListener(client, 'threadDelete', async (thread) => {
+          if (!passGuildFilter(thread.guildId, thread.guild?.name ?? null)) return;
+
+          const parentChannelIds = normalizeSelectedValues(
+            this.getNodeParameter('threadParentChannelIds', []),
+          );
+          if (parentChannelIds.length > 0 && !parentChannelIds.includes(thread.parentId ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'thread-delete',
+              threadId: thread.id,
+              threadName: thread.name,
+              parentChannelId: thread.parentId,
+              guildId: thread.guildId,
             }),
           ]);
         }),
