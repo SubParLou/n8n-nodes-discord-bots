@@ -24,13 +24,37 @@ import type { DiscordBotCredentials } from './types';
 import {
   buildAllComponentsFromUi,
   buildEmbedsFromUi,
+  buildModalFromUi,
   type AutoSelectMenuUiParams,
   type ButtonUiParams,
   type EmbedUiParams,
+  type ModalUiParams,
   type StringSelectMenuUiParams,
+  type TextInputUiParams,
 } from './messageBuilder';
 
-type Operation = 'send-message' | 'update-message' | 'register-slash-command' | 'respond-to-interaction';
+type Operation =
+  | 'send-message'
+  | 'update-message'
+  | 'register-slash-command'
+  | 'respond-to-interaction'
+  | 'add-reaction'
+  | 'add-role'
+  | 'ban-member'
+  | 'bulk-delete-messages'
+  | 'delete-message'
+  | 'fetch-member'
+  | 'fetch-message'
+  | 'fetch-message-history'
+  | 'kick-member'
+  | 'pin-message'
+  | 'remove-own-reaction'
+  | 'remove-role'
+  | 'send-modal'
+  | 'set-nickname'
+  | 'timeout-member'
+  | 'unban-member'
+  | 'unpin-message';
 
 function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFunctions): T {
   if (!value) {
@@ -83,9 +107,26 @@ export class DiscordBot implements INodeType {
         noDataExpression: true,
         default: 'send-message',
         options: [
+          { name: 'Add Reaction', value: 'add-reaction' },
+          { name: 'Add Role to Member', value: 'add-role' },
+          { name: 'Ban Member', value: 'ban-member' },
+          { name: 'Bulk Delete Messages', value: 'bulk-delete-messages' },
+          { name: 'Delete Message', value: 'delete-message' },
+          { name: 'Fetch Member', value: 'fetch-member' },
+          { name: 'Fetch Message', value: 'fetch-message' },
+          { name: 'Fetch Message History', value: 'fetch-message-history' },
+          { name: 'Kick Member', value: 'kick-member' },
+          { name: 'Pin Message', value: 'pin-message' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
+          { name: 'Remove Own Reaction', value: 'remove-own-reaction' },
+          { name: 'Remove Role from Member', value: 'remove-role' },
           { name: 'Respond to Interaction', value: 'respond-to-interaction' },
           { name: 'Send Message', value: 'send-message' },
+          { name: 'Send Modal', value: 'send-modal' },
+          { name: 'Set Member Nickname', value: 'set-nickname' },
+          { name: 'Timeout Member', value: 'timeout-member' },
+          { name: 'Unban Member', value: 'unban-member' },
+          { name: 'Unpin Message', value: 'unpin-message' },
           { name: 'Update Message', value: 'update-message' },
         ],
       },
@@ -1448,6 +1489,350 @@ export class DiscordBot implements INodeType {
         default: '[]',
         description: 'Advanced: JSON array for slash command options (use if the builder above does not meet your needs)',
       },
+
+      // ─── Message Operation Shared Fields ───────────────────────────────────
+      {
+        displayName: 'Guild Names or IDs',
+        name: 'msgOpGuildIds',
+        type: 'multiOptions',
+        typeOptions: { loadOptionsMethod: 'getGuilds' },
+        displayOptions: {
+          show: {
+            operation: ['delete-message', 'fetch-message', 'add-reaction', 'remove-own-reaction', 'pin-message', 'unpin-message'],
+          },
+        },
+        default: [],
+        description: 'Used to load channels. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Channel Name or ID',
+        name: 'msgOpChannelId',
+        type: 'options',
+        description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+        typeOptions: { loadOptionsMethod: 'getMsgOpChannels', loadOptionsDependsOn: ['msgOpGuildIds'] },
+        displayOptions: {
+          show: {
+            operation: ['delete-message', 'fetch-message', 'add-reaction', 'remove-own-reaction', 'pin-message', 'unpin-message'],
+          },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Message ID',
+        name: 'msgOpMessageId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['delete-message', 'fetch-message', 'add-reaction', 'remove-own-reaction', 'pin-message', 'unpin-message'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the target message',
+      },
+      {
+        displayName: 'Emoji',
+        name: 'reactionEmoji',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['add-reaction', 'remove-own-reaction'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'Unicode emoji (e.g. 👍) or custom emoji in name:id format (e.g. wave:123456789012345678)',
+      },
+
+      // ─── Fetch History & Bulk Delete Shared Fields ──────────────────────────
+      {
+        displayName: 'Guild Names or IDs',
+        name: 'historyGuildIds',
+        type: 'multiOptions',
+        typeOptions: { loadOptionsMethod: 'getGuilds' },
+        displayOptions: {
+          show: {
+            operation: ['fetch-message-history', 'bulk-delete-messages'],
+          },
+        },
+        default: [],
+        description: 'Used to load channels. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Channel Name or ID',
+        name: 'historyChannelId',
+        type: 'options',
+        description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+        typeOptions: { loadOptionsMethod: 'getHistoryChannels', loadOptionsDependsOn: ['historyGuildIds'] },
+        displayOptions: {
+          show: {
+            operation: ['fetch-message-history', 'bulk-delete-messages'],
+          },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Limit',
+        name: 'historyLimit',
+        type: 'number',
+        typeOptions: { minValue: 1, maxValue: 100 },
+        displayOptions: {
+          show: { operation: ['fetch-message-history'] },
+        },
+        default: 50,
+        description: 'Number of messages to retrieve (1–100)',
+      },
+      {
+        displayName: 'Before Message ID',
+        name: 'historyBefore',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['fetch-message-history'] },
+        },
+        default: '',
+        description: 'Return messages posted before this message ID (for pagination)',
+      },
+      {
+        displayName: 'After Message ID',
+        name: 'historyAfter',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['fetch-message-history'] },
+        },
+        default: '',
+        description: 'Return messages posted after this message ID (for pagination)',
+      },
+      {
+        displayName: 'Message IDs',
+        name: 'bulkMessageIds',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['bulk-delete-messages'] },
+        },
+        default: '',
+        required: true,
+        description: 'Comma-separated list or JSON array of message IDs to delete (max 100; messages older than 14 days are automatically skipped by Discord)',
+      },
+
+      // ─── Send Modal Fields ──────────────────────────────────────────────────
+      {
+        displayName: 'Use Interaction Data From Input',
+        name: 'modalUseInputData',
+        type: 'boolean',
+        displayOptions: {
+          show: { operation: ['send-modal'] },
+        },
+        default: true,
+        description: 'Whether to read interactionId and interactionToken from the incoming item (e.g. from Discord Bot Trigger)',
+      },
+      {
+        displayName: 'Interaction ID',
+        name: 'modalInteractionId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['send-modal'], modalUseInputData: [false] },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Interaction Token',
+        name: 'modalInteractionToken',
+        type: 'string',
+        typeOptions: { password: true },
+        displayOptions: {
+          show: { operation: ['send-modal'], modalUseInputData: [false] },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Modal Custom ID',
+        name: 'modalCustomId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['send-modal'] },
+        },
+        default: '',
+        required: true,
+        description: 'Unique identifier for this modal; returned in the Modal Submit trigger payload as customId',
+      },
+      {
+        displayName: 'Modal Title',
+        name: 'modalTitle',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['send-modal'] },
+        },
+        default: '',
+        required: true,
+        description: 'Title shown at the top of the modal (max 45 characters)',
+      },
+      {
+        displayName: 'Text Inputs',
+        name: 'modalInputs',
+        type: 'fixedCollection',
+        typeOptions: { multipleValues: true },
+        displayOptions: {
+          show: { operation: ['send-modal'] },
+        },
+        default: {},
+        placeholder: 'Add Text Input',
+        description: 'Up to 5 text input fields for the modal form',
+        options: [
+          {
+            displayName: 'Text Input',
+            name: 'input',
+            values: [
+              {
+                displayName: 'Custom ID',
+                name: 'customId',
+                type: 'string',
+                required: true,
+                default: '',
+                description: 'Identifier for this field, included in the modal submit payload',
+              },
+              {
+                displayName: 'Label',
+                name: 'label',
+                type: 'string',
+                required: true,
+                default: '',
+                description: 'Label shown above the input (max 45 characters)',
+              },
+              {
+                displayName: 'Max Length',
+                name: 'maxLength',
+                type: 'number',
+                typeOptions: { minValue: 0, maxValue: 4000 },
+                default: 0,
+                description: 'Maximum number of characters allowed (0 = Discord default)',
+              },
+              {
+                displayName: 'Min Length',
+                name: 'minLength',
+                type: 'number',
+                typeOptions: { minValue: 0, maxValue: 4000 },
+                default: 0,
+                description: 'Minimum number of characters required (0 = no minimum)',
+              },
+              {
+                displayName: 'Placeholder',
+                name: 'placeholder',
+                type: 'string',
+                default: '',
+                description: 'Greyed-out text shown inside the input when empty (max 100 characters)',
+              },
+              {
+                displayName: 'Pre-filled Value',
+                name: 'value',
+                type: 'string',
+                default: '',
+                description: 'Text pre-filled in the input when the modal opens',
+              },
+              {
+                displayName: 'Required',
+                name: 'required',
+                type: 'boolean',
+                default: true,
+              },
+              {
+                displayName: 'Style',
+                name: 'style',
+                type: 'options',
+                options: [
+                  { name: 'Short (single line)', value: 1 },
+                  { name: 'Paragraph (multi-line)', value: 2 },
+                ],
+                default: 1,
+              },
+            ],
+          },
+        ],
+      },
+
+      // ─── Member Management Shared Fields ───────────────────────────────────
+      {
+        displayName: 'Guild ID',
+        name: 'memberGuildId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['add-role', 'remove-role', 'kick-member', 'ban-member', 'unban-member', 'timeout-member', 'fetch-member', 'set-nickname'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the guild. Use <code>{{ $json.guildId }}</code> to pass from a trigger.',
+      },
+      {
+        displayName: 'User ID',
+        name: 'memberUserId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['add-role', 'remove-role', 'kick-member', 'ban-member', 'unban-member', 'timeout-member', 'fetch-member', 'set-nickname'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The Discord user ID of the target member. Use <code>{{ $json.userId }}</code> to pass from a trigger.',
+      },
+      {
+        displayName: 'Role ID',
+        name: 'memberRoleId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['add-role', 'remove-role'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the role to add or remove',
+      },
+      {
+        displayName: 'Reason',
+        name: 'memberReason',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['kick-member', 'ban-member', 'timeout-member'] },
+        },
+        default: '',
+        description: 'Reason for this moderation action (recorded in the guild audit log)',
+      },
+      {
+        displayName: 'Delete Message Days',
+        name: 'memberBanDeleteDays',
+        type: 'number',
+        typeOptions: { minValue: 0, maxValue: 7 },
+        displayOptions: {
+          show: { operation: ['ban-member'] },
+        },
+        default: 0,
+        description: 'Number of days of the user\'s recent messages to delete (0–7)',
+      },
+      {
+        displayName: 'Timeout Duration (Minutes)',
+        name: 'memberTimeoutMinutes',
+        type: 'number',
+        typeOptions: { minValue: 1, maxValue: 40320 },
+        displayOptions: {
+          show: { operation: ['timeout-member'] },
+        },
+        default: 60,
+        description: 'Duration to timeout the member in minutes (1 = 1 minute, 40320 = 28 days max)',
+      },
+      {
+        displayName: 'Nickname',
+        name: 'memberNickname',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['set-nickname'] },
+        },
+        default: '',
+        description: 'New server nickname for this member. Leave empty to clear the existing nickname.',
+      },
     ],
   };
 
@@ -1468,6 +1853,22 @@ export class DiscordBot implements INodeType {
       async getUpdateChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
         const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
         const guildIds = this.getNodeParameter('updateGuildIds', 0) as string[];
+        if (!guildIds.length) {
+          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+        }
+        return loadChannelOptions(credentials, guildIds);
+      },
+      async getMsgOpChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+        const guildIds = this.getNodeParameter('msgOpGuildIds', 0) as string[];
+        if (!guildIds.length) {
+          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+        }
+        return loadChannelOptions(credentials, guildIds);
+      },
+      async getHistoryChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+        const guildIds = this.getNodeParameter('historyGuildIds', 0) as string[];
         if (!guildIds.length) {
           throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
         }
@@ -1856,6 +2257,335 @@ export class DiscordBot implements INodeType {
           pairedItem: { item: i },
         });
 
+        continue;
+      }
+
+      // ─── Message Management Operations ────────────────────────────────────
+
+      if (operation === 'delete-message') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
+        const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+        const message = await (channel as any).messages.fetch(messageId);
+        await message.delete();
+
+        returnData.push({ json: { operation, channelId, messageId, deleted: true }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'fetch-message') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
+        const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+        const message = await (channel as any).messages.fetch(messageId);
+
+        returnData.push({
+          json: {
+            operation,
+            messageId: message.id,
+            channelId: message.channelId,
+            guildId: message.guildId,
+            content: message.content,
+            authorId: message.author.id,
+            authorUsername: message.author.username,
+            authorIsBot: message.author.bot,
+            createdTimestamp: message.createdTimestamp,
+            editedTimestamp: message.editedTimestamp,
+            pinned: message.pinned,
+            attachments: [...message.attachments.values()].map((a: any) => ({
+              id: a.id,
+              name: a.name,
+              url: a.url,
+              size: a.size,
+              contentType: a.contentType,
+            })),
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'fetch-message-history') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('historyChannelId', i) as string;
+        const limit = this.getNodeParameter('historyLimit', i, 50) as number;
+        const before = this.getNodeParameter('historyBefore', i, '') as string;
+        const after = this.getNodeParameter('historyAfter', i, '') as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+
+        const fetchOptions: Record<string, unknown> = { limit };
+        if (before) fetchOptions.before = before;
+        if (after) fetchOptions.after = after;
+
+        const messages = await (channel as any).messages.fetch(fetchOptions);
+        for (const msg of (messages as Map<string, any>).values()) {
+          returnData.push({
+            json: {
+              operation,
+              messageId: msg.id,
+              channelId: msg.channelId,
+              guildId: msg.guildId,
+              content: msg.content,
+              authorId: msg.author.id,
+              authorUsername: msg.author.username,
+              authorIsBot: msg.author.bot,
+              createdTimestamp: msg.createdTimestamp,
+              editedTimestamp: msg.editedTimestamp,
+              pinned: msg.pinned,
+            },
+            pairedItem: { item: i },
+          });
+        }
+        continue;
+      }
+
+      if (operation === 'add-reaction' || operation === 'remove-own-reaction') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
+        const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
+        const emoji = this.getNodeParameter('reactionEmoji', i) as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+        const message = await (channel as any).messages.fetch(messageId);
+
+        if (operation === 'add-reaction') {
+          await message.react(emoji);
+        } else {
+          const reaction = message.reactions.cache.get(emoji);
+          if (reaction) {
+            await reaction.users.remove(client.user!.id);
+          }
+        }
+
+        returnData.push({ json: { operation, channelId, messageId, emoji }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'pin-message' || operation === 'unpin-message') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
+        const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
+        }
+        const message = await (channel as any).messages.fetch(messageId);
+
+        if (operation === 'pin-message') {
+          await message.pin();
+        } else {
+          await message.unpin();
+        }
+
+        returnData.push({ json: { operation, channelId, messageId, pinned: operation === 'pin-message' }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'bulk-delete-messages') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('historyChannelId', i) as string;
+        const messageIdsRaw = this.getNodeParameter('bulkMessageIds', i) as string;
+
+        let messageIds: string[];
+        const trimmed = messageIdsRaw.trim();
+        if (trimmed.startsWith('[')) {
+          messageIds = parseJsonField<string[]>(trimmed, 'Message IDs', this);
+        } else {
+          messageIds = trimmed.split(',').map((id) => id.trim()).filter(Boolean);
+        }
+
+        if (messageIds.length === 0) {
+          throw new NodeOperationError(this.getNode(), 'Provide at least one message ID to delete');
+        }
+        if (messageIds.length > 100) {
+          throw new NodeOperationError(this.getNode(), 'Bulk delete supports a maximum of 100 messages at once');
+        }
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isTextBased() || !('bulkDelete' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} does not support bulk delete`);
+        }
+        // Pass true to filter out messages older than 14 days (Discord requirement)
+        const deleted = await (channel as any).bulkDelete(messageIds, true);
+
+        returnData.push({ json: { operation, channelId, deletedCount: deleted.size }, pairedItem: { item: i } });
+        continue;
+      }
+
+      // ─── Send Modal ────────────────────────────────────────────────────────
+
+      if (operation === 'send-modal') {
+        const modalUseInputData = this.getNodeParameter('modalUseInputData', i, true) as boolean;
+
+        let interactionId: string;
+        let interactionToken: string;
+
+        if (modalUseInputData) {
+          const itemJson = items[i].json as Record<string, unknown>;
+          interactionId = String(itemJson.interactionId ?? '').trim();
+          interactionToken = String(itemJson.interactionToken ?? '').trim();
+          if (!interactionId || !interactionToken) {
+            throw new NodeOperationError(
+              this.getNode(),
+              'Input item is missing interactionId or interactionToken. Connect Discord Bot Trigger output or disable "Use Interaction Data From Input".',
+            );
+          }
+        } else {
+          interactionId = this.getNodeParameter('modalInteractionId', i) as string;
+          interactionToken = this.getNodeParameter('modalInteractionToken', i) as string;
+        }
+
+        const modalCustomId = this.getNodeParameter('modalCustomId', i) as string;
+        const modalTitle = this.getNodeParameter('modalTitle', i) as string;
+        const modalInputsParam = this.getNodeParameter('modalInputs', i, {}) as ModalUiParams['inputs'];
+
+        const modal = buildModalFromUi(
+          { customId: modalCustomId, title: modalTitle, inputs: modalInputsParam },
+          this.getNode(),
+        );
+
+        const rest = new REST({ version: '10' });
+        await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
+          auth: false,
+          body: { type: 9, data: modal },
+        });
+
+        returnData.push({ json: { operation, interactionId, modalCustomId, modalTitle }, pairedItem: { item: i } });
+        continue;
+      }
+
+      // ─── Member Management Operations ─────────────────────────────────────
+
+      if (operation === 'add-role' || operation === 'remove-role') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+        const roleId = this.getNodeParameter('memberRoleId', i) as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+
+        if (operation === 'add-role') {
+          await member.roles.add(roleId);
+        } else {
+          await member.roles.remove(roleId);
+        }
+
+        returnData.push({ json: { operation, guildId, userId, roleId }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'kick-member') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+        const reason = this.getNodeParameter('memberReason', i, '') as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+        await member.kick(reason || undefined);
+
+        returnData.push({ json: { operation, guildId, userId, reason: reason || null }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'ban-member') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+        const reason = this.getNodeParameter('memberReason', i, '') as string;
+        const deleteMessageSeconds = (this.getNodeParameter('memberBanDeleteDays', i, 0) as number) * 86400;
+
+        const guild = await client.guilds.fetch(guildId);
+        await guild.bans.create(userId, { reason: reason || undefined, deleteMessageSeconds });
+
+        returnData.push({ json: { operation, guildId, userId, reason: reason || null }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'unban-member') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        await guild.bans.remove(userId);
+
+        returnData.push({ json: { operation, guildId, userId }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'timeout-member') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+        const minutes = this.getNodeParameter('memberTimeoutMinutes', i, 60) as number;
+        const reason = this.getNodeParameter('memberReason', i, '') as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+        await member.timeout(minutes * 60 * 1000, reason || undefined);
+
+        returnData.push({ json: { operation, guildId, userId, timeoutMinutes: minutes, reason: reason || null }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'fetch-member') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+
+        returnData.push({
+          json: {
+            operation,
+            userId: member.id,
+            guildId: guild.id,
+            userName: member.user.username,
+            displayName: member.displayName,
+            nickname: member.nickname,
+            joinedAt: member.joinedAt?.toISOString() ?? null,
+            // Filter @everyone role (same ID as guild)
+            roleIds: [...member.roles.cache.keys()].filter((id) => id !== guild.id),
+            isBot: member.user.bot,
+            userAvatarUrl: member.user.displayAvatarURL(),
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'set-nickname') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('memberGuildId', i) as string;
+        const userId = this.getNodeParameter('memberUserId', i) as string;
+        const nickname = this.getNodeParameter('memberNickname', i, '') as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+        await member.setNickname(nickname || null);
+
+        returnData.push({ json: { operation, guildId, userId, nickname: nickname || null }, pairedItem: { item: i } });
         continue;
       }
 

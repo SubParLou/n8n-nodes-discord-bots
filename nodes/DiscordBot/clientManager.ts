@@ -17,13 +17,15 @@ function createDiscordClient(token: string): CachedDiscordClient {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildModeration,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildMessageReactions,
       GatewayIntentBits.DirectMessages,
       GatewayIntentBits.DirectMessageReactions,
       GatewayIntentBits.MessageContent,
     ],
-    partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User],
+    partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User],
   });
 
   const ready = new Promise<Client>((resolve, reject) => {

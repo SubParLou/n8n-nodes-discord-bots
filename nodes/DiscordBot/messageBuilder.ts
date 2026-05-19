@@ -400,3 +400,89 @@ export function buildAllComponentsFromUi(
 
   return allRows;
 }
+
+// ─── Modal Builder ────────────────────────────────────────────────────────────
+
+export interface TextInputUiParams {
+  customId: string;
+  label: string;
+  style: 1 | 2;
+  placeholder: string;
+  value: string;
+  minLength: number;
+  maxLength: number;
+  required: boolean;
+}
+
+export interface ModalUiParams {
+  customId: string;
+  title: string;
+  inputs: { input?: TextInputUiParams[] };
+}
+
+const MODAL_LIMITS = {
+  MAX_INPUTS: 5,
+  TITLE_MAX: 45,
+  LABEL_MAX: 45,
+  PLACEHOLDER_MAX: 100,
+} as const;
+
+/**
+ * Build a Discord-compatible modal object from the UI parameter shape.
+ * Returns a raw API object suitable for use as the `data` field of an
+ * interaction callback with type 9 (MODAL).
+ */
+export function buildModalFromUi(modal: ModalUiParams, node: INode): object {
+  if (!modal.customId?.trim()) {
+    throw new NodeOperationError(node, 'Modal requires a Custom ID');
+  }
+  if (!modal.title?.trim()) {
+    throw new NodeOperationError(node, 'Modal requires a Title');
+  }
+  checkLength(modal.title, MODAL_LIMITS.TITLE_MAX, 'Modal Title', node);
+
+  const inputs = modal.inputs?.input ?? [];
+  if (inputs.length === 0) {
+    throw new NodeOperationError(node, 'Modal requires at least one Text Input');
+  }
+  if (inputs.length > MODAL_LIMITS.MAX_INPUTS) {
+    throw new NodeOperationError(
+      node,
+      `Discord allows a maximum of ${MODAL_LIMITS.MAX_INPUTS} text inputs per modal (got ${inputs.length})`,
+    );
+  }
+
+  const components = inputs.map((input) => {
+    if (!input.customId?.trim()) {
+      throw new NodeOperationError(node, 'Each Text Input requires a Custom ID');
+    }
+    if (!input.label?.trim()) {
+      throw new NodeOperationError(node, 'Each Text Input requires a Label');
+    }
+    checkLength(input.label, MODAL_LIMITS.LABEL_MAX, 'Text Input Label', node);
+    if (input.placeholder) {
+      checkLength(input.placeholder, MODAL_LIMITS.PLACEHOLDER_MAX, 'Text Input Placeholder', node);
+    }
+
+    const textInput: Record<string, unknown> = {
+      type: 4,
+      custom_id: input.customId,
+      label: input.label,
+      style: input.style ?? 1,
+      required: input.required ?? true,
+    };
+
+    if (input.placeholder) textInput.placeholder = input.placeholder;
+    if (input.value) textInput.value = input.value;
+    if (input.minLength > 0) textInput.min_length = input.minLength;
+    if (input.maxLength > 0) textInput.max_length = input.maxLength;
+
+    return { type: 1, components: [textInput] };
+  });
+
+  return {
+    custom_id: modal.customId,
+    title: modal.title,
+    components,
+  };
+}

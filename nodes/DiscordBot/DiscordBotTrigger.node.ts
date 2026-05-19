@@ -28,7 +28,14 @@ type TriggerType =
   | 'reaction-remove'
   | 'slash-command'
   | 'component-interaction'
-  | 'modal-submit';
+  | 'modal-submit'
+  | 'ban-add'
+  | 'ban-remove'
+  | 'member-join'
+  | 'member-leave'
+  | 'member-update'
+  | 'message-delete'
+  | 'message-edit';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -336,7 +343,14 @@ export class DiscordBotTrigger implements INodeType {
         name: 'event',
         type: 'options',
         options: [
+          { name: 'Ban Added', value: 'ban-add' },
+          { name: 'Ban Removed', value: 'ban-remove' },
           { name: 'Component Interaction', value: 'component-interaction' },
+          { name: 'Member Joined', value: 'member-join' },
+          { name: 'Member Left', value: 'member-leave' },
+          { name: 'Member Updated', value: 'member-update' },
+          { name: 'Message Deleted', value: 'message-delete' },
+          { name: 'Message Edited', value: 'message-edit' },
           { name: 'Modal Submit', value: 'modal-submit' },
           { name: 'New Channel Message', value: 'channel-message' },
           { name: 'New Direct Message', value: 'direct-message' },
@@ -355,7 +369,7 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit'],
+            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit'],
           },
         },
         default: [],
@@ -371,7 +385,7 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove'],
+            event: ['channel-message', 'reaction-add', 'reaction-remove', 'message-edit', 'message-delete'],
           },
         },
         default: [],
@@ -885,6 +899,182 @@ export class DiscordBotTrigger implements INodeType {
             }
             this.emit([this.helpers.returnJsonArray(buildInteractionPayload(interaction))]);
           }
+        }),
+      );
+    }
+
+    // ─── Member Events ────────────────────────────────────────────────────────
+
+    if (event === 'member-join') {
+      removeListeners.push(
+        addClientListener(client, 'guildMemberAdd', async (member) => {
+          if (!passGuildFilter(member.guild.id, member.guild.name)) return;
+          const user = member.user;
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'member-join',
+              guildId: member.guild.id,
+              userId: user.id,
+              userName: user.username,
+              userDisplayName: member.displayName,
+              userGlobalName: user.globalName ?? null,
+              userTag: user.tag,
+              userAvatarUrl: user.displayAvatarURL(),
+              memberNickname: member.nickname,
+              memberRoleIds: [...member.roles.cache.keys()],
+              joinedAt: member.joinedAt?.toISOString() ?? null,
+              isBot: user.bot,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'member-leave') {
+      removeListeners.push(
+        addClientListener(client, 'guildMemberRemove', async (member) => {
+          if (!passGuildFilter(member.guild.id, member.guild.name)) return;
+          const user = member.user;
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'member-leave',
+              guildId: member.guild.id,
+              userId: user.id,
+              userName: user.username,
+              userDisplayName: member.displayName,
+              userGlobalName: user.globalName ?? null,
+              userTag: user.tag,
+              userAvatarUrl: user.displayAvatarURL(),
+              memberNickname: member.nickname,
+              memberRoleIds: [...member.roles.cache.keys()],
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'member-update') {
+      removeListeners.push(
+        addClientListener(client, 'guildMemberUpdate', async (oldMember, newMember) => {
+          if (!passGuildFilter(newMember.guild.id, newMember.guild.name)) return;
+          const user = newMember.user;
+          const oldRoleIds = [...oldMember.roles.cache.keys()];
+          const newRoleIds = [...newMember.roles.cache.keys()];
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'member-update',
+              guildId: newMember.guild.id,
+              userId: user.id,
+              userName: user.username,
+              userDisplayName: newMember.displayName,
+              userGlobalName: user.globalName ?? null,
+              userTag: user.tag,
+              userAvatarUrl: user.displayAvatarURL(),
+              oldNickname: oldMember.nickname,
+              newNickname: newMember.nickname,
+              oldRoleIds,
+              newRoleIds,
+              rolesAdded: newRoleIds.filter((id) => !oldRoleIds.includes(id)),
+              rolesRemoved: oldRoleIds.filter((id) => !newRoleIds.includes(id)),
+            }),
+          ]);
+        }),
+      );
+    }
+
+    // ─── Message Edit / Delete Events ─────────────────────────────────────────
+
+    if (event === 'message-edit') {
+      removeListeners.push(
+        addClientListener(client, 'messageUpdate', async (oldMessage, newMessage) => {
+          if (newMessage.partial) {
+            try {
+              await newMessage.fetch();
+            } catch {
+              return;
+            }
+          }
+          if (!includeBotMessages && newMessage.author?.bot) return;
+          if (!passGuildFilter(newMessage.guildId, newMessage.guild?.name ?? null)) return;
+          if (channelIds.length > 0 && !channelIds.includes(newMessage.channelId ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'message-edit',
+              messageId: newMessage.id,
+              channelId: newMessage.channelId,
+              guildId: newMessage.guildId,
+              oldContent: oldMessage.partial ? null : oldMessage.content,
+              newContent: newMessage.content,
+              authorId: newMessage.author?.id,
+              authorUsername: newMessage.author?.username,
+              editedTimestamp: newMessage.editedTimestamp,
+              createdTimestamp: newMessage.createdTimestamp,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'message-delete') {
+      removeListeners.push(
+        addClientListener(client, 'messageDelete', async (message) => {
+          if (!passGuildFilter(message.guildId, message.guild?.name ?? null)) return;
+          if (channelIds.length > 0 && !channelIds.includes(message.channelId ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'message-delete',
+              messageId: message.id,
+              channelId: message.channelId,
+              guildId: message.guildId,
+              content: message.partial ? null : message.content,
+              authorId: message.partial ? null : message.author?.id,
+              authorUsername: message.partial ? null : message.author?.username,
+              createdTimestamp: message.partial ? null : message.createdTimestamp,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    // ─── Ban Events ───────────────────────────────────────────────────────────
+
+    if (event === 'ban-add') {
+      removeListeners.push(
+        addClientListener(client, 'guildBanAdd', async (ban) => {
+          if (!passGuildFilter(ban.guild.id, ban.guild.name)) return;
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'ban-add',
+              guildId: ban.guild.id,
+              userId: ban.user.id,
+              userName: ban.user.username,
+              userGlobalName: ban.user.globalName ?? null,
+              userTag: ban.user.tag,
+              userAvatarUrl: ban.user.displayAvatarURL(),
+              reason: ban.reason,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'ban-remove') {
+      removeListeners.push(
+        addClientListener(client, 'guildBanRemove', async (ban) => {
+          if (!passGuildFilter(ban.guild.id, ban.guild.name)) return;
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'ban-remove',
+              guildId: ban.guild.id,
+              userId: ban.user.id,
+              userName: ban.user.username,
+              userGlobalName: ban.user.globalName ?? null,
+              userTag: ban.user.tag,
+              userAvatarUrl: ban.user.displayAvatarURL(),
+            }),
+          ]);
         }),
       );
     }
