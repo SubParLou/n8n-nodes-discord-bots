@@ -30,7 +30,6 @@ import {
   type EmbedUiParams,
   type ModalUiParams,
   type StringSelectMenuUiParams,
-  type TextInputUiParams,
 } from './messageBuilder';
 
 type Operation =
@@ -2368,10 +2367,19 @@ export class DiscordBot implements INodeType {
         if (operation === 'add-reaction') {
           await message.react(emoji);
         } else {
-          const reaction = message.reactions.cache.get(emoji);
-          if (reaction) {
-            await reaction.users.remove(client.user!.id);
+          // discord.js keys custom-emoji reactions by snowflake ID, not "name:id".
+          // For unicode emojis the key is the unicode character.
+          const emojiId = emoji.includes(':') ? emoji.split(':').pop() : null;
+          const reaction = message.reactions.cache.find((r: any) =>
+            emojiId ? r.emoji.id === emojiId : r.emoji.name === emoji,
+          );
+          if (!reaction) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Reaction "${emoji}" not found on message ${messageId}. The bot may not have reacted with this emoji.`,
+            );
           }
+          await reaction.users.remove(client.user!.id);
         }
 
         returnData.push({ json: { operation, channelId, messageId, emoji }, pairedItem: { item: i } });
