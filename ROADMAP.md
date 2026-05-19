@@ -14,6 +14,9 @@ This document compares the current node capabilities against the full Discord.js
 | Actions: delete message, fetch message, fetch history, add/remove reactions, pin/unpin, bulk delete | ✅ v1.1.4 |
 | Actions: send modal to an interaction | ✅ v1.1.4 |
 | Actions: add/remove roles, kick, ban, unban, timeout, fetch member, set nickname | ✅ v1.1.4 |
+| Triggers: Voice State (join/leave/move between voice channels) | ✅ v1.3.0 |
+| Triggers: Guild Scheduled Event created/updated/deleted | ✅ v1.4.0 |
+| Actions: create/edit/delete/list guild scheduled events | ✅ v1.4.0 |
 | Message components: embeds, buttons (all 5 styles), string select menus, auto-populated select menus (user/role/mentionable/channel) | ✅ |
 | Message payload modes: visual builder, raw JSON, builder + JSON merge | ✅ |
 
@@ -25,17 +28,8 @@ This document compares the current node capabilities against the full Discord.js
 | Feature | discord.js event | n8n Feasibility | Milestone |
 |---------|-----------------|-----------------|-----------|
 | Context Menu Command Invoked (user or message right-click) | `interactionCreate` | ✅ Fully feasible — `interactionCreate` already handled | v1.6.0 |
-| Guild Scheduled Event Created/Updated/Deleted | `guildScheduledEvent*` | ✅ Fully feasible — needs `GuildScheduledEvents` intent | v1.4.0 |
 | Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v2.0.0 |
 
-
-### New Operations — Guild Scheduled Events
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Create Scheduled Event | `guild.scheduledEvents.create(options)` | ✅ Fully supported | v1.4.0 |
-| Edit Scheduled Event | `event.edit(options)` | ✅ Fully supported | v1.4.0 |
-| Delete Scheduled Event | `event.delete()` | ✅ Fully supported | v1.4.0 |
-| List Scheduled Events | `guild.scheduledEvents.fetch()` | ✅ Returns events array to workflow | v1.4.0 |
 
 ### New Operations — Channel & Role Management
 | Feature | discord.js API | n8n Feasibility | Milestone |
@@ -93,7 +87,7 @@ This document compares the current node capabilities against the full Discord.js
 | ~~**v1.1.4**~~ | ~~High-Priority Operations & Triggers~~ | ~~Message management (delete, fetch, history, reactions, pin/unpin, bulk delete); Send Modal; Member management (roles, kick, ban, timeout, nickname); Triggers: member join/leave/update, message edit/delete, ban add/remove~~ **✅ Shipped** |
 | ~~**v1.2.0**~~ | ~~Thread Management~~ | ~~Create, edit, delete threads; add/remove thread members; thread event triggers~~ **✅ Shipped** |
 | ~~**v1.3.0**~~ | ~~Voice State Trigger~~ | ~~Trigger on users joining, leaving, or moving between voice channels~~ **✅ Shipped** |
-| **v1.4.0** | Guild Scheduled Events | Create/edit/delete/list scheduled events; scheduled event triggers |
+| ~~**v1.4.0**~~ | ~~Guild Scheduled Events~~ | ~~Create/edit/delete/list scheduled events; scheduled event triggers~~ **✅ Shipped** |
 | **v1.5.0** | Channel & Role Management | Create/edit/delete channels and roles; create invites |
 | **v1.6.0** | Context Menu Commands | Register user/message context menu commands; context menu interaction trigger |
 | **v1.7.0** | Bot Presence & Status | Set bot online status and activity (Playing/Watching/Listening/Streaming/Competing) |

@@ -40,7 +40,10 @@ type TriggerType =
   | 'thread-create'
   | 'thread-delete'
   | 'thread-update'
-  | 'voice-state-update';
+  | 'voice-state-update'
+  | 'scheduled-event-create'
+  | 'scheduled-event-update'
+  | 'scheduled-event-delete';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -361,6 +364,9 @@ export class DiscordBotTrigger implements INodeType {
           { name: 'New Direct Message', value: 'direct-message' },
           { name: 'Reaction Added', value: 'reaction-add' },
           { name: 'Reaction Removed', value: 'reaction-remove' },
+          { name: 'Scheduled Event Created', value: 'scheduled-event-create' },
+          { name: 'Scheduled Event Deleted', value: 'scheduled-event-delete' },
+          { name: 'Scheduled Event Updated', value: 'scheduled-event-update' },
           { name: 'Slash Command', value: 'slash-command' },
           { name: 'Thread Created', value: 'thread-create' },
           { name: 'Thread Deleted', value: 'thread-delete' },
@@ -378,7 +384,7 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete', 'voice-state-update'],
+            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete', 'voice-state-update', 'scheduled-event-create', 'scheduled-event-update', 'scheduled-event-delete'],
           },
         },
         default: [],
@@ -1271,6 +1277,85 @@ export class DiscordBotTrigger implements INodeType {
               serverDeaf: newState.serverDeaf,
               streaming: newState.streaming,
               selfVideo: newState.selfVideo,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'scheduled-event-create') {
+      removeListeners.push(
+        addClientListener(client, 'guildScheduledEventCreate', async (scheduledEvent) => {
+          if (!passGuildFilter(scheduledEvent.guildId, scheduledEvent.guild?.name ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'scheduled-event-create',
+              eventId: scheduledEvent.id,
+              eventName: scheduledEvent.name,
+              guildId: scheduledEvent.guildId,
+              channelId: scheduledEvent.channelId,
+              creatorId: scheduledEvent.creatorId,
+              description: scheduledEvent.description,
+              scheduledStartTime: scheduledEvent.scheduledStartTime,
+              scheduledEndTime: scheduledEvent.scheduledEndTime,
+              status: scheduledEvent.status,
+              entityType: scheduledEvent.entityType,
+              location: scheduledEvent.entityMetadata?.location ?? null,
+              userCount: scheduledEvent.memberCount ?? null,
+              url: scheduledEvent.url,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'scheduled-event-update') {
+      removeListeners.push(
+        addClientListener(client, 'guildScheduledEventUpdate', async (oldEvent, newEvent) => {
+          if (!passGuildFilter(newEvent.guildId, newEvent.guild?.name ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'scheduled-event-update',
+              eventId: newEvent.id,
+              guildId: newEvent.guildId,
+              oldName: oldEvent?.name ?? null,
+              newName: newEvent.name,
+              oldStatus: oldEvent?.status ?? null,
+              newStatus: newEvent.status,
+              oldScheduledStartTime: oldEvent?.scheduledStartTime ?? null,
+              newScheduledStartTime: newEvent.scheduledStartTime,
+              oldScheduledEndTime: oldEvent?.scheduledEndTime ?? null,
+              newScheduledEndTime: newEvent.scheduledEndTime,
+              channelId: newEvent.channelId,
+              entityType: newEvent.entityType,
+              description: newEvent.description,
+              location: newEvent.entityMetadata?.location ?? null,
+              url: newEvent.url,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'scheduled-event-delete') {
+      removeListeners.push(
+        addClientListener(client, 'guildScheduledEventDelete', async (scheduledEvent) => {
+          if (!passGuildFilter(scheduledEvent.guildId, scheduledEvent.guild?.name ?? '')) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'scheduled-event-delete',
+              eventId: scheduledEvent.id,
+              eventName: scheduledEvent.name,
+              guildId: scheduledEvent.guildId,
+              channelId: scheduledEvent.channelId,
+              status: scheduledEvent.status,
+              entityType: scheduledEvent.entityType,
+              scheduledStartTime: scheduledEvent.scheduledStartTime,
+              scheduledEndTime: scheduledEvent.scheduledEndTime,
+              location: scheduledEvent.entityMetadata?.location ?? null,
             }),
           ]);
         }),
