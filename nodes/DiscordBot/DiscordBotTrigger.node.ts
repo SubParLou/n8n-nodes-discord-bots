@@ -943,7 +943,7 @@ export class DiscordBotTrigger implements INodeType {
               userTag: user.tag,
               userAvatarUrl: user.displayAvatarURL(),
               memberNickname: member.nickname,
-              memberRoleIds: [...member.roles.cache.keys()],
+              memberRoleIds: [...member.roles.cache.keys()].filter((id) => id !== member.guild.id),
               joinedAt: member.joinedAt?.toISOString() ?? null,
               isBot: user.bot,
             }),
@@ -968,7 +968,7 @@ export class DiscordBotTrigger implements INodeType {
               userTag: user.tag,
               userAvatarUrl: user.displayAvatarURL(),
               memberNickname: member.nickname,
-              memberRoleIds: [...member.roles.cache.keys()],
+              memberRoleIds: [...member.roles.cache.keys()].filter((id) => id !== member.guild.id),
             }),
           ]);
         }),
@@ -980,8 +980,8 @@ export class DiscordBotTrigger implements INodeType {
         addClientListener(client, 'guildMemberUpdate', async (oldMember, newMember) => {
           if (!passGuildFilter(newMember.guild.id, newMember.guild.name)) return;
           const user = newMember.user;
-          const oldRoleIds = [...oldMember.roles.cache.keys()];
-          const newRoleIds = [...newMember.roles.cache.keys()];
+          const oldRoleIds = [...oldMember.roles.cache.keys()].filter((id) => id !== newMember.guild.id);
+          const newRoleIds = [...newMember.roles.cache.keys()].filter((id) => id !== newMember.guild.id);
           this.emit([
             this.helpers.returnJsonArray({
               type: 'member-update',
