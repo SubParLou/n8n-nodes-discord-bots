@@ -61,14 +61,13 @@ export async function getClient(credentials: DiscordBotCredentials): Promise<Cli
   }
 
   try {
-    const client = await cached.ready;
-    // If the client has since disconnected (e.g. token revoked, network failure),
-    // evict the stale entry and create a fresh connection.
-    if (!client.isReady()) {
+    await cached.ready;
+    if (!cached.client.isReady()) {
+      // Client lost its connection after the initial ready — discard and reconnect.
       clients.delete(token);
       return getClient(credentials);
     }
-    return client;
+    return cached.client;
   } catch (error) {
     clients.delete(token);
     throw error;

@@ -2,12 +2,13 @@
 
 n8n community node for building Discord bots:
 
-- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, and modal submissions.
+- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, modal submissions, and thread events.
 - Send bot messages to channels or DMs.
 - Edit existing bot messages.
 - Register slash commands.
 - Respond to Discord interactions from workflow data.
 - Build rich messages with embeds, buttons, and select menus using a visual builder or raw JSON.
+- Manage Discord threads — create from messages or standalone, edit (rename, archive, lock), and add or remove thread members.
 
 ## Requirements
 
@@ -64,6 +65,9 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | Slash Command | Triggered when a user invokes a registered slash command |
 | Component Interaction | Triggered when a user clicks a button or uses a select menu |
 | Modal Submit | Triggered when a user submits a modal form |
+| Thread Created | Triggered when a new thread is created in a guild channel |
+| Thread Updated | Triggered when a thread is edited (name, archived state, locked state, etc.) |
+| Thread Deleted | Triggered when a thread is deleted |
 
 ---
 
@@ -258,6 +262,131 @@ Output: `{ operation, interactionId, responded: true, responseType: 'initial' | 
 
 ---
 
+## Thread Management
+
+### Thread Trigger Outputs
+
+#### Thread Created
+Fires when a new thread is created. Only emits for freshly-created threads (not on bot restart).
+
+| Field | Description |
+|-------|-------------|
+| threadId | Snowflake ID of the new thread |
+| threadName | Name of the thread |
+| parentChannelId | ID of the parent channel |
+| guildId | ID of the guild |
+| threadType | Discord channel type integer (`11` = Public, `12` = Private, `10` = Announcement) |
+| archived | Whether the thread started archived |
+| locked | Whether the thread is locked |
+| autoArchiveDuration | Minutes until auto-archive (60, 1440, 4320, or 10080) |
+| ownerId | Discord ID of the user who created the thread |
+| createdTimestamp | Unix timestamp (ms) of thread creation |
+| memberCount | Approximate member count |
+| messageCount | Approximate message count |
+
+Optional filters: **Guild** (restrict to specific guilds) and **Parent Channel** (restrict to threads under specific channels).
+
+#### Thread Updated
+Fires when a thread's properties change.
+
+| Field | Description |
+|-------|-------------|
+| threadId | Snowflake ID of the thread |
+| oldName / newName | Thread name before and after the edit |
+| oldArchived / newArchived | Archived state before and after |
+| oldLocked / newLocked | Locked state before and after |
+| autoArchiveDuration | Current auto-archive duration |
+| memberCount | Approximate member count |
+
+Optional filters: **Guild** and **Parent Channel**.
+
+#### Thread Deleted
+Fires when a thread is deleted.
+
+| Field | Description |
+|-------|-------------|
+| threadId | Snowflake ID of the deleted thread |
+| threadName | Name of the thread at time of deletion |
+| parentChannelId | ID of the parent channel |
+| guildId | ID of the guild |
+
+Optional filters: **Guild** and **Parent Channel**.
+
+---
+
+### Thread Operations
+
+#### Create Thread from Message
+Creates a public thread attached to an existing message.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild | Used to load available channels |
+| Channel | Channel containing the source message |
+| Message ID | ID of the message to start the thread from |
+| Thread Name | Name for the new thread (1–100 characters) |
+| Auto Archive Duration | Inactivity minutes before auto-archive: `60`, `1440` (1 day), `4320` (3 days), `10080` (1 week) |
+| Slow Mode (seconds) | Per-user message cooldown (0–21600 seconds, 0 = disabled) |
+| Reason | Audit log reason (optional) |
+
+Output: `{ operation, threadId, threadName, parentChannelId, guildId }`
+
+---
+
+#### Create Standalone Thread
+Creates a new thread in a channel without attaching it to a message. Supports public, private, and announcement threads.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild | Used to load available channels |
+| Channel | Parent channel |
+| Thread Name | Name for the new thread (1–100 characters) |
+| Thread Type | `Public Thread`, `Private Thread`, or `Announcement Thread` |
+| Auto Archive Duration | Inactivity minutes before auto-archive: `60`, `1440`, `4320`, `10080` |
+| Invitable | *(Private threads only)* Whether non-moderators can add other members |
+| Slow Mode (seconds) | Per-user message cooldown (0–21600 seconds) |
+| Reason | Audit log reason (optional) |
+
+Output: `{ operation, threadId, threadName, parentChannelId, guildId, threadType }`
+
+---
+
+#### Edit Thread
+Updates properties of an existing thread. At least one field must be provided.
+
+| Parameter | Description |
+|-----------|-------------|
+| Thread ID | ID of the thread to edit |
+| Thread Edit Fields | One or more of: **Name**, **Archived**, **Locked**, **Auto Archive Duration**, **Slow Mode**, **Reason** |
+
+Output: `{ operation, threadId, threadName }`
+
+---
+
+#### Add Member to Thread
+Adds a user to an existing thread.
+
+| Parameter | Description |
+|-----------|-------------|
+| Thread ID | ID of the thread |
+| User ID | Discord snowflake ID of the user to add |
+
+Output: `{ operation, threadId, userId }`
+
+---
+
+#### Remove Member from Thread
+Removes a user from an existing thread.
+
+| Parameter | Description |
+|-----------|-------------|
+| Thread ID | ID of the thread |
+| User ID | Discord snowflake ID of the user to remove |
+
+Output: `{ operation, threadId, userId }`
+
+---
+
 ## Typical workflow patterns
 
 ### Slash command bot
@@ -305,6 +434,7 @@ Output: `{ operation, interactionId, responded: true, responseType: 'initial' | 
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
 
 ## Milestone Versions
+- **v1.2.0**: Thread Management — Create threads from messages or standalone; edit threads (archive, lock, rename, auto-archive duration); add/remove thread members; new triggers: Thread Created, Thread Updated, Thread Deleted.
 - **v1.1.4**: Message management operations (delete, fetch, history, add/remove reactions, pin/unpin, bulk delete); Send Modal; Member management (add/remove roles, kick, ban, unban, timeout, fetch member, set nickname); New triggers: Member Joined, Member Left, Member Updated, Message Edited, Message Deleted, Ban Added, Ban Removed.
 - **v1.1.3**: Stable release. README documentation pass.
 - **v1.1.0**: Most triggers validated. Component Interaction and Modal Submit pending validation.
