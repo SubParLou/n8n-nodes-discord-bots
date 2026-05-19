@@ -305,6 +305,7 @@ Output: `{ operation, interactionId, responded: true, responseType: 'initial' | 
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
 
 ## Milestone Versions
+- **v1.2.0**: Thread Management — Create threads from messages or standalone; edit threads (archive, lock, rename, auto-archive duration); add/remove thread members; new triggers: Thread Created, Thread Updated, Thread Deleted.
 - **v1.1.4**: Message management operations (delete, fetch, history, add/remove reactions, pin/unpin, bulk delete); Send Modal; Member management (add/remove roles, kick, ban, unban, timeout, fetch member, set nickname); New triggers: Member Joined, Member Left, Member Updated, Message Edited, Message Deleted, Ban Added, Ban Removed.
 - **v1.1.3**: Stable release. README documentation pass.
 - **v1.1.0**: Most triggers validated. Component Interaction and Modal Submit pending validation.

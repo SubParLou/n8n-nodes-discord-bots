@@ -25,21 +25,10 @@ This document compares the current node capabilities against the full Discord.js
 | Feature | discord.js event | n8n Feasibility | Milestone |
 |---------|-----------------|-----------------|-----------|
 | Voice State Update (join/leave/move voice channel) | `voiceStateUpdate` | ✅ Fully feasible — needs `GuildVoiceStates` intent | v1.3.0 |
-| Thread Created | `threadCreate` | ✅ Fully feasible — `Guilds` intent already present | v1.2.0 |
-| Thread Updated | `threadUpdate` | ✅ Fully feasible | v1.2.0 |
-| Thread Deleted | `threadDelete` | ✅ Fully feasible | v1.2.0 |
 | Context Menu Command Invoked (user or message right-click) | `interactionCreate` | ✅ Fully feasible — `interactionCreate` already handled | v1.6.0 |
 | Guild Scheduled Event Created/Updated/Deleted | `guildScheduledEvent*` | ✅ Fully feasible — needs `GuildScheduledEvents` intent | v1.4.0 |
 | Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v2.0.0 |
 
-### New Operations — Thread Management
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Create Thread from a Message | `message.startThread(options)` | ✅ Common bot automation pattern | v1.2.0 |
-| Create Standalone Thread | `channel.threads.create(options)` | ✅ Fully supported | v1.2.0 |
-| Edit Thread (archive, lock, rename, auto-archive duration) | `thread.edit(options)` | ✅ Fully supported | v1.2.0 |
-| Add Member to Thread | `thread.members.add(userId)` | ✅ Fully supported | v1.2.0 |
-| Remove Member from Thread | `thread.members.remove(userId)` | ✅ Fully supported | v1.2.0 |
 
 ### New Operations — Guild Scheduled Events
 | Feature | discord.js API | n8n Feasibility | Milestone |
@@ -103,7 +92,7 @@ This document compares the current node capabilities against the full Discord.js
 | Milestone | Title | Key Features |
 |-----------|-------|-------------|
 | ~~**v1.1.4**~~ | ~~High-Priority Operations & Triggers~~ | ~~Message management (delete, fetch, history, reactions, pin/unpin, bulk delete); Send Modal; Member management (roles, kick, ban, timeout, nickname); Triggers: member join/leave/update, message edit/delete, ban add/remove~~ **✅ Shipped** |
-| **v1.2.0** | Thread Management | Create, edit, delete threads; add/remove thread members; thread event triggers |
+| ~~**v1.2.0**~~ | ~~Thread Management~~ | ~~Create, edit, delete threads; add/remove thread members; thread event triggers~~ **✅ Shipped** |
 | **v1.3.0** | Voice State Trigger | Trigger on users joining, leaving, or moving between voice channels |
 | **v1.4.0** | Guild Scheduled Events | Create/edit/delete/list scheduled events; scheduled event triggers |
 | **v1.5.0** | Channel & Role Management | Create/edit/delete channels and roles; create invites |
