@@ -58,7 +58,11 @@ type Operation =
   | 'create-thread'
   | 'create-thread-from-message'
   | 'edit-thread'
-  | 'remove-thread-member';
+  | 'remove-thread-member'
+  | 'create-scheduled-event'
+  | 'delete-scheduled-event'
+  | 'edit-scheduled-event'
+  | 'list-scheduled-events';
 
 function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFunctions): T {
   if (!value) {
@@ -116,14 +120,18 @@ export class DiscordBot implements INodeType {
           { name: 'Add Thread Member', value: 'add-thread-member' },
           { name: 'Ban Member', value: 'ban-member' },
           { name: 'Bulk Delete Messages', value: 'bulk-delete-messages' },
+          { name: 'Create Scheduled Event', value: 'create-scheduled-event' },
           { name: 'Create Thread', value: 'create-thread' },
           { name: 'Create Thread From Message', value: 'create-thread-from-message' },
           { name: 'Delete Message', value: 'delete-message' },
+          { name: 'Delete Scheduled Event', value: 'delete-scheduled-event' },
+          { name: 'Edit Scheduled Event', value: 'edit-scheduled-event' },
           { name: 'Edit Thread', value: 'edit-thread' },
           { name: 'Fetch Member', value: 'fetch-member' },
           { name: 'Fetch Message', value: 'fetch-message' },
           { name: 'Fetch Message History', value: 'fetch-message-history' },
           { name: 'Kick Member', value: 'kick-member' },
+          { name: 'List Scheduled Events', value: 'list-scheduled-events' },
           { name: 'Pin Message', value: 'pin-message' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
           { name: 'Remove Own Reaction', value: 'remove-own-reaction' },
@@ -2034,6 +2042,248 @@ export class DiscordBot implements INodeType {
           },
         ],
       },
+
+      // ─── Scheduled Event Shared Fields ──────────────────────────────────────
+      {
+        displayName: 'Guild ID',
+        name: 'scheduledEventGuildId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['create-scheduled-event', 'delete-scheduled-event', 'edit-scheduled-event', 'list-scheduled-events'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the guild. Use <code>{{ $JSON.guildId }}</code> to pass from a trigger.',
+      },
+      {
+        displayName: 'Event ID',
+        name: 'scheduledEventId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['delete-scheduled-event', 'edit-scheduled-event'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the scheduled event',
+      },
+
+      // ─── Create Scheduled Event Fields ──────────────────────────────────────
+      {
+        displayName: 'Event Name',
+        name: 'scheduledEventName',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-scheduled-event'] },
+        },
+        default: '',
+        required: true,
+        description: 'The name of the event (max 100 characters)',
+      },
+      {
+        displayName: 'Start Time',
+        name: 'scheduledEventStartTime',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-scheduled-event'] },
+        },
+        default: '',
+        required: true,
+        description: 'ISO 8601 datetime string for when the event starts (e.g. <code>2024-12-31T20:00:00Z</code>)',
+      },
+      {
+        displayName: 'Entity Type',
+        name: 'scheduledEventEntityType',
+        type: 'options',
+        displayOptions: {
+          show: { operation: ['create-scheduled-event'] },
+        },
+        default: 2,
+        options: [
+          { name: 'External Location', value: 3 },
+          { name: 'Stage Channel', value: 1 },
+          { name: 'Voice Channel', value: 2 },
+        ],
+        description: 'The type of location for this event',
+      },
+      {
+        displayName: 'Channel ID',
+        name: 'scheduledEventChannelId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['create-scheduled-event'],
+            scheduledEventEntityType: [1, 2],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'ID of the voice or stage channel where the event will take place',
+      },
+      {
+        displayName: 'Location',
+        name: 'scheduledEventLocation',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['create-scheduled-event'],
+            scheduledEventEntityType: [3],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'Physical or virtual location description for the external event',
+      },
+      {
+        displayName: 'Additional Fields',
+        name: 'scheduledEventCreateFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: {
+          show: { operation: ['create-scheduled-event'] },
+        },
+        default: {},
+        options: [
+          {
+            displayName: 'Description',
+            name: 'description',
+            type: 'string',
+            default: '',
+            description: 'Description of the event (max 1000 characters)',
+          },
+          {
+            displayName: 'End Time',
+            name: 'scheduledEndTime',
+            type: 'string',
+            default: '',
+            description: 'ISO 8601 datetime string for when the event ends. Required for External entity type.',
+          },
+          {
+            displayName: 'Image URL',
+            name: 'imageUrl',
+            type: 'string',
+            default: '',
+            description: 'URL of a cover image for the event',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+        ],
+      },
+
+      // ─── Edit Scheduled Event Fields ────────────────────────────────────────
+      {
+        displayName: 'Event Edit Fields',
+        name: 'scheduledEventEditFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: {
+          show: { operation: ['edit-scheduled-event'] },
+        },
+        default: {},
+        description: 'Fields to update on the scheduled event. At least one must be set.',
+        options: [
+          {
+            displayName: 'Channel ID',
+            name: 'channelId',
+            type: 'string',
+            default: '',
+            description: 'Move the event to a different voice or stage channel',
+          },
+          {
+            displayName: 'Description',
+            name: 'description',
+            type: 'string',
+            default: '',
+          },
+          {
+            displayName: 'End Time',
+            name: 'scheduledEndTime',
+            type: 'string',
+            default: '',
+            description: 'ISO 8601 datetime string',
+          },
+          {
+            displayName: 'Image URL',
+            name: 'imageUrl',
+            type: 'string',
+            default: '',
+            description: 'URL of a new cover image for the event',
+          },
+          {
+            displayName: 'Location',
+            name: 'location',
+            type: 'string',
+            default: '',
+            description: 'New location for External entity type events',
+          },
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+            description: 'New name for the event',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+          {
+            displayName: 'Start Time',
+            name: 'scheduledStartTime',
+            type: 'string',
+            default: '',
+            description: 'ISO 8601 datetime string',
+          },
+          {
+            displayName: 'Status',
+            name: 'status',
+            type: 'options',
+            default: 1,
+            options: [
+              { name: 'Active', value: 2 },
+              { name: 'Canceled', value: 4 },
+              { name: 'Completed', value: 3 },
+              { name: 'Scheduled', value: 1 },
+            ],
+            description: 'New status for the event',
+          },
+        ],
+      },
+
+      // ─── Delete Scheduled Event Fields ──────────────────────────────────────
+      {
+        displayName: 'Reason',
+        name: 'scheduledEventDeleteReason',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-scheduled-event'] },
+        },
+        default: '',
+        description: 'Reason recorded in the guild audit log',
+      },
+
+      // ─── List Scheduled Events Fields ───────────────────────────────────────
+      {
+        displayName: 'Include User Count',
+        name: 'scheduledEventWithUserCount',
+        type: 'boolean',
+        displayOptions: {
+          show: { operation: ['list-scheduled-events'] },
+        },
+        default: true,
+        description: 'Whether to include the count of users subscribed to each event',
+      },
     ],
   };
 
@@ -2932,6 +3182,166 @@ export class DiscordBot implements INodeType {
         }
 
         returnData.push({ json: { operation, threadId, userId }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'create-scheduled-event') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('scheduledEventGuildId', i) as string;
+        const name = this.getNodeParameter('scheduledEventName', i) as string;
+        const startTime = this.getNodeParameter('scheduledEventStartTime', i) as string;
+        const entityType = this.getNodeParameter('scheduledEventEntityType', i) as number;
+        const extraFields = this.getNodeParameter('scheduledEventCreateFields', i, {}) as {
+          description?: string;
+          scheduledEndTime?: string;
+          imageUrl?: string;
+          reason?: string;
+        };
+
+        const guild = await client.guilds.fetch(guildId);
+
+        const createOptions: Record<string, unknown> = {
+          name,
+          scheduledStartTime: new Date(startTime),
+          privacyLevel: 2, // GuildScheduledEventPrivacyLevel.GuildOnly
+          entityType,
+        };
+
+        if (entityType === 1 || entityType === 2) {
+          // Stage (1) or Voice (2) — channel required
+          const channelId = this.getNodeParameter('scheduledEventChannelId', i) as string;
+          if (!channelId) throw new NodeOperationError(this.getNode(), 'Channel ID is required for Voice and Stage events');
+          createOptions.channel = channelId;
+        } else if (entityType === 3) {
+          // External — location and end time required
+          const location = this.getNodeParameter('scheduledEventLocation', i) as string;
+          if (!location) throw new NodeOperationError(this.getNode(), 'Location is required for External events');
+          if (!extraFields.scheduledEndTime) throw new NodeOperationError(this.getNode(), 'End Time is required for External events');
+          createOptions.entityMetadata = { location };
+        }
+
+        if (extraFields.scheduledEndTime) createOptions.scheduledEndTime = new Date(extraFields.scheduledEndTime);
+        if (extraFields.description) createOptions.description = extraFields.description;
+        if (extraFields.imageUrl) createOptions.image = extraFields.imageUrl;
+        if (extraFields.reason) createOptions.reason = extraFields.reason;
+
+        const event = await (guild.scheduledEvents as any).create(createOptions);
+        returnData.push({
+          json: {
+            operation,
+            eventId: event.id,
+            eventName: event.name,
+            guildId: event.guildId,
+            channelId: event.channelId,
+            entityType: event.entityType,
+            status: event.status,
+            scheduledStartTime: event.scheduledStartTime,
+            scheduledEndTime: event.scheduledEndTime,
+            description: event.description,
+            url: event.url,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'edit-scheduled-event') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('scheduledEventGuildId', i) as string;
+        const eventId = this.getNodeParameter('scheduledEventId', i) as string;
+        const editFields = this.getNodeParameter('scheduledEventEditFields', i, {}) as {
+          name?: string;
+          scheduledStartTime?: string;
+          scheduledEndTime?: string;
+          channelId?: string;
+          location?: string;
+          description?: string;
+          imageUrl?: string;
+          status?: number;
+          reason?: string;
+        };
+
+        const guild = await client.guilds.fetch(guildId);
+        const event = await (guild.scheduledEvents as any).fetch(eventId);
+
+        const editOptions: Record<string, unknown> = {};
+        if (editFields.name) editOptions.name = editFields.name;
+        if (editFields.scheduledStartTime) editOptions.scheduledStartTime = new Date(editFields.scheduledStartTime);
+        if (editFields.scheduledEndTime) editOptions.scheduledEndTime = new Date(editFields.scheduledEndTime);
+        if (editFields.channelId) editOptions.channel = editFields.channelId;
+        if (editFields.location) editOptions.entityMetadata = { location: editFields.location };
+        if (editFields.description !== undefined) editOptions.description = editFields.description;
+        if (editFields.imageUrl) editOptions.image = editFields.imageUrl;
+        if (editFields.status !== undefined) editOptions.status = editFields.status;
+        if (editFields.reason) editOptions.reason = editFields.reason;
+
+        if (Object.keys(editOptions).length === 0) {
+          throw new NodeOperationError(this.getNode(), 'Add at least one field to edit');
+        }
+
+        const updated = await event.edit(editOptions);
+        returnData.push({
+          json: {
+            operation,
+            eventId: updated.id,
+            eventName: updated.name,
+            guildId: updated.guildId,
+            channelId: updated.channelId,
+            entityType: updated.entityType,
+            status: updated.status,
+            scheduledStartTime: updated.scheduledStartTime,
+            scheduledEndTime: updated.scheduledEndTime,
+            description: updated.description,
+            url: updated.url,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'delete-scheduled-event') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('scheduledEventGuildId', i) as string;
+        const eventId = this.getNodeParameter('scheduledEventId', i) as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        await (guild.scheduledEvents as any).delete(eventId);
+
+        returnData.push({
+          json: { operation, eventId, guildId, deleted: true },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'list-scheduled-events') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('scheduledEventGuildId', i) as string;
+        const withUserCount = this.getNodeParameter('scheduledEventWithUserCount', i, true) as boolean;
+
+        const guild = await client.guilds.fetch(guildId);
+        const events = await (guild.scheduledEvents as any).fetch({ withUserCount });
+
+        const eventList = [...events.values()].map((event: any) => ({
+          eventId: event.id,
+          eventName: event.name,
+          guildId: event.guildId,
+          channelId: event.channelId,
+          entityType: event.entityType,
+          status: event.status,
+          scheduledStartTime: event.scheduledStartTime,
+          scheduledEndTime: event.scheduledEndTime,
+          description: event.description,
+          url: event.url,
+          userCount: event.memberCount ?? null,
+          location: event.entityMetadata?.location ?? null,
+          creatorId: event.creatorId,
+        }));
+
+        returnData.push({
+          json: { operation, guildId, count: eventList.length, events: eventList },
+          pairedItem: { item: i },
+        });
         continue;
       }
 

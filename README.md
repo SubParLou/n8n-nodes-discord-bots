@@ -2,13 +2,14 @@
 
 n8n community node for building Discord bots:
 
-- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, modal submissions, thread events, and voice state changes.
+- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, modal submissions, thread events, voice state changes, and guild scheduled events.
 - Send bot messages to channels or DMs.
 - Edit existing bot messages.
 - Register slash commands.
 - Respond to Discord interactions from workflow data.
 - Build rich messages with embeds, buttons, and select menus using a visual builder or raw JSON.
 - Manage Discord threads — create from messages or standalone, edit (rename, archive, lock), and add or remove thread members.
+- Manage guild scheduled events — create, edit, delete, and list events with Voice, Stage, and External location types.
 
 ## Requirements
 
@@ -69,6 +70,9 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | Thread Updated | Triggered when a thread is edited (name, archived state, locked state, etc.) |
 | Thread Deleted | Triggered when a thread is deleted |
 | Voice State Update | Triggered when a user joins, leaves, moves between, or changes state in a voice channel |
+| Scheduled Event Created | Triggered when a new guild scheduled event is created |
+| Scheduled Event Updated | Triggered when a guild scheduled event is modified (name, status, time, etc.) |
+| Scheduled Event Deleted | Triggered when a guild scheduled event is deleted |
 
 ---
 
@@ -434,6 +438,146 @@ Requires the **Server Members Intent** to be enabled on your Discord bot.
 
 ---
 
+## Guild Scheduled Events
+
+### Scheduled Event Triggers
+
+All three triggers require the **GuildScheduledEvents** intent. This is automatically requested by the node.
+
+**Optional filter:** **Guild** (restrict to specific guilds).
+
+#### Scheduled Event Created
+
+Fires when a new scheduled event is created in a guild.
+
+**Output fields:**
+
+| Field | Description |
+|-------|-------------|
+| eventId | Discord ID of the scheduled event |
+| eventName | Name of the event |
+| guildId | Guild where the event was created |
+| channelId | Voice or stage channel ID, or null for External events |
+| creatorId | Discord ID of the user who created the event |
+| description | Event description, or null |
+| scheduledStartTime | ISO datetime when the event is scheduled to start |
+| scheduledEndTime | ISO datetime when the event is scheduled to end, or null |
+| status | Event status: `1`=Scheduled, `2`=Active, `3`=Completed, `4`=Canceled |
+| entityType | `1`=Stage Channel, `2`=Voice Channel, `3`=External |
+| location | Location string for External events, or null |
+| userCount | Number of subscribed users, or null |
+| url | Discord URL for the event |
+
+#### Scheduled Event Updated
+
+Fires when a scheduled event is modified (name change, status transition, time update, etc.).
+
+**Output fields:**
+
+| Field | Description |
+|-------|-------------|
+| eventId | Discord ID of the scheduled event |
+| guildId | Guild where the event lives |
+| oldName | Previous event name |
+| newName | New event name |
+| oldStatus | Previous status code |
+| newStatus | New status code |
+| oldScheduledStartTime | Previous start time |
+| newScheduledStartTime | New start time |
+| oldScheduledEndTime | Previous end time |
+| newScheduledEndTime | New end time |
+| channelId | Voice or stage channel ID, or null |
+| entityType | `1`=Stage, `2`=Voice, `3`=External |
+| description | Current description |
+| location | Location string for External events, or null |
+| url | Discord URL for the event |
+
+#### Scheduled Event Deleted
+
+Fires when a scheduled event is deleted from a guild.
+
+**Output fields:**
+
+| Field | Description |
+|-------|-------------|
+| eventId | Discord ID of the deleted event |
+| eventName | Name of the event at time of deletion |
+| guildId | Guild where the event was |
+| channelId | Voice or stage channel ID, or null |
+| status | Status at time of deletion |
+| entityType | `1`=Stage, `2`=Voice, `3`=External |
+| scheduledStartTime | Scheduled start time |
+| scheduledEndTime | Scheduled end time, or null |
+| location | Location string for External events, or null |
+
+---
+
+### Scheduled Event Operations
+
+#### Create Scheduled Event
+
+Creates a new guild scheduled event.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild ID | ID of the guild to create the event in |
+| Event Name | Name of the event (max 100 characters) |
+| Start Time | ISO 8601 datetime string (e.g. `2024-12-31T20:00:00Z`) |
+| Entity Type | `Voice Channel`, `Stage Channel`, or `External Location` |
+| Channel ID | ID of the voice or stage channel *(Voice/Stage events only)* |
+| Location | Physical or virtual location description *(External events only)* |
+| Additional Fields → End Time | ISO 8601 end time. Required for External events |
+| Additional Fields → Description | Event description (max 1000 characters) |
+| Additional Fields → Image URL | URL of a cover image for the event |
+| Additional Fields → Reason | Reason recorded in the audit log |
+
+**Output fields:** `eventId`, `eventName`, `guildId`, `channelId`, `entityType`, `status`, `scheduledStartTime`, `scheduledEndTime`, `description`, `url`
+
+#### Edit Scheduled Event
+
+Modifies an existing guild scheduled event. At least one field must be set.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild ID | ID of the guild containing the event |
+| Event ID | Discord ID of the scheduled event |
+| Event Edit Fields → Name | New event name |
+| Event Edit Fields → Start Time | New start time (ISO 8601) |
+| Event Edit Fields → End Time | New end time (ISO 8601) |
+| Event Edit Fields → Channel ID | Move event to a different voice or stage channel |
+| Event Edit Fields → Location | New location for External events |
+| Event Edit Fields → Description | New description |
+| Event Edit Fields → Image URL | New cover image URL |
+| Event Edit Fields → Status | `Scheduled` (1), `Active` (2), `Completed` (3), or `Canceled` (4) |
+| Event Edit Fields → Reason | Reason recorded in the audit log |
+
+**Output fields:** `eventId`, `eventName`, `guildId`, `channelId`, `entityType`, `status`, `scheduledStartTime`, `scheduledEndTime`, `description`, `url`
+
+#### Delete Scheduled Event
+
+Deletes a guild scheduled event.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild ID | ID of the guild containing the event |
+| Event ID | Discord ID of the scheduled event |
+| Reason | Reason recorded in the audit log (optional) |
+
+**Output fields:** `operation`, `eventId`, `guildId`, `deleted`
+
+#### List Scheduled Events
+
+Fetches all scheduled events in a guild.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild ID | ID of the guild to fetch events from |
+| Include User Count | Whether to include subscriber counts for each event (default: true) |
+
+**Output fields:** `operation`, `guildId`, `count`, `events` — array of event objects each containing `eventId`, `eventName`, `guildId`, `channelId`, `entityType`, `status`, `scheduledStartTime`, `scheduledEndTime`, `description`, `url`, `userCount`, `location`, `creatorId`
+
+---
+
 ## Typical workflow patterns
 
 ### Slash command bot
@@ -481,6 +625,7 @@ Requires the **Server Members Intent** to be enabled on your Discord bot.
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
 
 ## Milestone Versions
+- **v1.4.0**: Guild Scheduled Events — 4 new operations (Create, Edit, Delete, List Scheduled Events) and 3 new triggers (Scheduled Event Created/Updated/Deleted); requires `GuildScheduledEvents` intent; supports Voice Channel, Stage Channel, and External Location entity types.
 - **v1.3.0**: Voice State Trigger — triggers on users joining, leaving, moving between, or changing state in voice channels; emits subtype (join/leave/move/update), channel info, and full mute/deafen/stream/video state.
 - **v1.2.0**: Thread Management — Create threads from messages or standalone; edit threads (archive, lock, rename, auto-archive duration); add/remove thread members; new triggers: Thread Created, Thread Updated, Thread Deleted.
 - **v1.1.4**: Message management operations (delete, fetch, history, add/remove reactions, pin/unpin, bulk delete); Send Modal; Member management (add/remove roles, kick, ban, unban, timeout, fetch member, set nickname); New triggers: Member Joined, Member Left, Member Updated, Message Edited, Message Deleted, Ban Added, Ban Removed.
