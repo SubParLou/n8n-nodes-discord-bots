@@ -119,7 +119,7 @@ export class DiscordBot implements INodeType {
           { name: 'Pin Message', value: 'pin-message' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
           { name: 'Remove Own Reaction', value: 'remove-own-reaction' },
-          { name: 'Remove Role from Member', value: 'remove-role' },
+          { name: 'Remove Role From Member', value: 'remove-role' },
           { name: 'Respond to Interaction', value: 'respond-to-interaction' },
           { name: 'Send Message', value: 'send-message' },
           { name: 'Send Modal', value: 'send-modal' },
@@ -1542,7 +1542,7 @@ export class DiscordBot implements INodeType {
         },
         default: '',
         required: true,
-        description: 'Unicode emoji (e.g. 👍) or custom emoji in name:id format (e.g. wave:123456789012345678)',
+        description: 'Unicode emoji (e.g. 👍) or custom emoji in name:ID format (e.g. wave:123456789012345678).',
       },
 
       // ─── Fetch History & Bulk Delete Shared Fields ──────────────────────────
@@ -1726,7 +1726,7 @@ export class DiscordBot implements INodeType {
                 description: 'Greyed-out text shown inside the input when empty (max 100 characters)',
               },
               {
-                displayName: 'Pre-filled Value',
+                displayName: 'Pre-Filled Value',
                 name: 'value',
                 type: 'string',
                 default: '',
@@ -1743,8 +1743,8 @@ export class DiscordBot implements INodeType {
                 name: 'style',
                 type: 'options',
                 options: [
-                  { name: 'Short (single line)', value: 1 },
-                  { name: 'Paragraph (multi-line)', value: 2 },
+                  { name: 'Short (Single Line)', value: 1 },
+                  { name: 'Paragraph (Multi-Line)', value: 2 },
                 ],
                 default: 1,
               },
@@ -1765,7 +1765,7 @@ export class DiscordBot implements INodeType {
         },
         default: '',
         required: true,
-        description: 'The ID of the guild. Use <code>{{ $json.guildId }}</code> to pass from a trigger.',
+        description: 'The ID of the guild. Use <code>{{ $JSON.guildId }}</code> to pass from a trigger.',
       },
       {
         displayName: 'User ID',
@@ -1778,7 +1778,7 @@ export class DiscordBot implements INodeType {
         },
         default: '',
         required: true,
-        description: 'The Discord user ID of the target member. Use <code>{{ $json.userId }}</code> to pass from a trigger.',
+        description: 'The Discord user ID of the target member. Use <code>{{ $JSON.userId }}</code> to pass from a trigger.',
       },
       {
         displayName: 'Role ID',
