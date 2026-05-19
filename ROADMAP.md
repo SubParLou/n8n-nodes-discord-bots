@@ -88,7 +88,7 @@ This document compares the current node capabilities against the full Discord.js
 | ~~**v1.2.0**~~ | ~~Thread Management~~ | ~~Create, edit, delete threads; add/remove thread members; thread event triggers~~ **✅ Shipped** |
 | ~~**v1.3.0**~~ | ~~Voice State Trigger~~ | ~~Trigger on users joining, leaving, or moving between voice channels~~ **✅ Shipped** |
 | ~~**v1.4.0**~~ | ~~Guild Scheduled Events~~ | ~~Create/edit/delete/list scheduled events; scheduled event triggers~~ **✅ Shipped** |
-| **v1.5.0** | Channel & Role Management | Create/edit/delete channels and roles; create invites |
+| ~~**v1.5.0**~~ | ~~Channel & Role Management~~ | ~~Create/edit/delete channels and roles; create invites~~ **✅ Shipped** |
 | **v1.6.0** | Context Menu Commands | Register user/message context menu commands; context menu interaction trigger |
 | **v1.7.0** | Bot Presence & Status | Set bot online status and activity (Playing/Watching/Listening/Streaming/Competing) |
 | **v2.0.0** | Message Polls | Send messages with native Discord polls; poll vote triggers |

@@ -62,7 +62,14 @@ type Operation =
   | 'create-scheduled-event'
   | 'delete-scheduled-event'
   | 'edit-scheduled-event'
-  | 'list-scheduled-events';
+  | 'list-scheduled-events'
+  | 'create-channel'
+  | 'edit-channel'
+  | 'delete-channel'
+  | 'create-invite'
+  | 'create-role'
+  | 'edit-role'
+  | 'delete-role';
 
 function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFunctions): T {
   if (!value) {
@@ -120,11 +127,18 @@ export class DiscordBot implements INodeType {
           { name: 'Add Thread Member', value: 'add-thread-member' },
           { name: 'Ban Member', value: 'ban-member' },
           { name: 'Bulk Delete Messages', value: 'bulk-delete-messages' },
+          { name: 'Create Channel', value: 'create-channel' },
+          { name: 'Create Invite', value: 'create-invite' },
+          { name: 'Create Role', value: 'create-role' },
           { name: 'Create Scheduled Event', value: 'create-scheduled-event' },
           { name: 'Create Thread', value: 'create-thread' },
           { name: 'Create Thread From Message', value: 'create-thread-from-message' },
+          { name: 'Delete Channel', value: 'delete-channel' },
           { name: 'Delete Message', value: 'delete-message' },
+          { name: 'Delete Role', value: 'delete-role' },
           { name: 'Delete Scheduled Event', value: 'delete-scheduled-event' },
+          { name: 'Edit Channel', value: 'edit-channel' },
+          { name: 'Edit Role', value: 'edit-role' },
           { name: 'Edit Scheduled Event', value: 'edit-scheduled-event' },
           { name: 'Edit Thread', value: 'edit-thread' },
           { name: 'Fetch Member', value: 'fetch-member' },
@@ -2284,6 +2298,417 @@ export class DiscordBot implements INodeType {
         default: true,
         description: 'Whether to include the count of users subscribed to each event',
       },
+
+      // ─── Channel Management Shared Fields ───────────────────────────────────
+      {
+        displayName: 'Guild ID',
+        name: 'channelMgmtGuildId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-channel'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the guild. Use <code>{{ $JSON.guildId }}</code> to pass from a trigger.',
+      },
+      {
+        displayName: 'Channel ID',
+        name: 'channelMgmtChannelId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['edit-channel', 'delete-channel', 'create-invite'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the channel. Use <code>{{ $JSON.channelId }}</code> to pass from a trigger.',
+      },
+
+      // ─── Create Channel Fields ───────────────────────────────────────────────
+      {
+        displayName: 'Channel Name',
+        name: 'channelCreateName',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-channel'] },
+        },
+        default: '',
+        required: true,
+        description: 'Name for the new channel (max 100 characters)',
+      },
+      {
+        displayName: 'Channel Type',
+        name: 'channelCreateType',
+        type: 'options',
+        displayOptions: {
+          show: { operation: ['create-channel'] },
+        },
+        default: 0,
+        options: [
+          { name: 'Announcement', value: 5 },
+          { name: 'Category', value: 4 },
+          { name: 'Forum', value: 15 },
+          { name: 'Stage Voice', value: 13 },
+          { name: 'Text', value: 0 },
+          { name: 'Voice', value: 2 },
+        ],
+        description: 'The type of channel to create',
+      },
+      {
+        displayName: 'Additional Fields',
+        name: 'channelCreateFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: {
+          show: { operation: ['create-channel'] },
+        },
+        default: {},
+        options: [
+          {
+            displayName: 'Bitrate',
+            name: 'bitrate',
+            type: 'number',
+            typeOptions: { minValue: 8000 },
+            default: 64000,
+            description: 'Audio bitrate in bits/second for voice or stage channels (e.g. 64000)',
+          },
+          {
+            displayName: 'Category ID',
+            name: 'parentId',
+            type: 'string',
+            default: '',
+            description: 'ID of the category to place this channel under',
+          },
+          {
+            displayName: 'NSFW',
+            name: 'nsfw',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to mark this channel as age-restricted (NSFW)',
+          },
+          {
+            displayName: 'Position',
+            name: 'position',
+            type: 'number',
+            typeOptions: { minValue: 0 },
+            default: 0,
+            description: 'Sorting position of the channel in the channel list',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+          {
+            displayName: 'Slowmode Seconds',
+            name: 'rateLimitPerUser',
+            type: 'number',
+            typeOptions: { minValue: 0, maxValue: 21600 },
+            default: 0,
+            description: 'Seconds a member must wait between messages (0 to disable). Text channels only.',
+          },
+          {
+            displayName: 'Topic',
+            name: 'topic',
+            type: 'string',
+            default: '',
+            description: 'Channel topic shown in the channel header (max 1024 characters). Text and announcement channels only.',
+          },
+          {
+            displayName: 'User Limit',
+            name: 'userLimit',
+            type: 'number',
+            typeOptions: { minValue: 0, maxValue: 99 },
+            default: 0,
+            description: 'Maximum number of users allowed in a voice channel (0 = no limit)',
+          },
+        ],
+      },
+
+      // ─── Edit Channel Fields ─────────────────────────────────────────────────
+      {
+        displayName: 'Channel Edit Fields',
+        name: 'channelEditFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: {
+          show: { operation: ['edit-channel'] },
+        },
+        default: {},
+        description: 'Fields to update on the channel. At least one must be set.',
+        options: [
+          {
+            displayName: 'Bitrate',
+            name: 'bitrate',
+            type: 'number',
+            typeOptions: { minValue: 8000 },
+            default: 64000,
+            description: 'Audio bitrate in bits/second for voice or stage channels',
+          },
+          {
+            displayName: 'Category ID',
+            name: 'parentId',
+            type: 'string',
+            default: '',
+            description: 'ID of the category to move this channel under (empty to remove from category)',
+          },
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+            description: 'New name for the channel (max 100 characters)',
+          },
+          {
+            displayName: 'NSFW',
+            name: 'nsfw',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to mark this channel as age-restricted (NSFW)',
+          },
+          {
+            displayName: 'Position',
+            name: 'position',
+            type: 'number',
+            typeOptions: { minValue: 0 },
+            default: 0,
+            description: 'New sorting position of the channel',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+          {
+            displayName: 'Slowmode Seconds',
+            name: 'rateLimitPerUser',
+            type: 'number',
+            typeOptions: { minValue: 0, maxValue: 21600 },
+            default: 0,
+            description: 'Seconds a member must wait between messages (0 to disable)',
+          },
+          {
+            displayName: 'Topic',
+            name: 'topic',
+            type: 'string',
+            default: '',
+            description: 'New channel topic (max 1024 characters)',
+          },
+          {
+            displayName: 'User Limit',
+            name: 'userLimit',
+            type: 'number',
+            typeOptions: { minValue: 0, maxValue: 99 },
+            default: 0,
+            description: 'Maximum users in a voice channel (0 = no limit)',
+          },
+        ],
+      },
+
+      // ─── Delete Channel Fields ───────────────────────────────────────────────
+      {
+        displayName: 'Reason',
+        name: 'channelDeleteReason',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-channel'] },
+        },
+        default: '',
+        description: 'Reason recorded in the guild audit log',
+      },
+
+      // ─── Create Invite Fields ────────────────────────────────────────────────
+      {
+        displayName: 'Invite Options',
+        name: 'inviteCreateFields',
+        type: 'collection',
+        placeholder: 'Add Option',
+        displayOptions: {
+          show: { operation: ['create-invite'] },
+        },
+        default: {},
+        options: [
+          {
+            displayName: 'Max Age (Seconds)',
+            name: 'maxAge',
+            type: 'number',
+            typeOptions: { minValue: 0 },
+            default: 86400,
+            description: 'Duration in seconds after which the invite expires (0 = never expires)',
+          },
+          {
+            displayName: 'Max Uses',
+            name: 'maxUses',
+            type: 'number',
+            typeOptions: { minValue: 0 },
+            default: 0,
+            description: 'Maximum number of times this invite can be used (0 = unlimited)',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+          {
+            displayName: 'Temporary Membership',
+            name: 'temporary',
+            type: 'boolean',
+            default: false,
+            description: 'Whether users joining via this invite are automatically kicked if they do not get a role within 24 hours',
+          },
+          {
+            displayName: 'Unique',
+            name: 'unique',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to always create a new unique invite even if a similar one already exists',
+          },
+        ],
+      },
+
+      // ─── Role Management Shared Fields ──────────────────────────────────────
+      {
+        displayName: 'Guild ID',
+        name: 'roleMgmtGuildId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-role', 'edit-role', 'delete-role'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the guild. Use <code>{{ $JSON.guildId }}</code> to pass from a trigger.',
+      },
+      {
+        displayName: 'Role ID',
+        name: 'roleMgmtRoleId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['edit-role', 'delete-role'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the role',
+      },
+
+      // ─── Create Role Fields ──────────────────────────────────────────────────
+      {
+        displayName: 'Role Name',
+        name: 'roleCreateName',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['create-role'] },
+        },
+        default: '',
+        required: true,
+        description: 'Name for the new role (max 100 characters)',
+      },
+      {
+        displayName: 'Additional Fields',
+        name: 'roleCreateFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: {
+          show: { operation: ['create-role'] },
+        },
+        default: {},
+        options: [
+          {
+            displayName: 'Color',
+            name: 'color',
+            type: 'color',
+            default: '',
+            description: 'Color for the role, for example #5865F2',
+          },
+          {
+            displayName: 'Display Separately (Hoist)',
+            name: 'hoist',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to display role members separately from online members in the member list',
+          },
+          {
+            displayName: 'Mentionable',
+            name: 'mentionable',
+            type: 'boolean',
+            default: false,
+            description: 'Whether this role can be @mentioned by anyone',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+        ],
+      },
+
+      // ─── Edit Role Fields ────────────────────────────────────────────────────
+      {
+        displayName: 'Role Edit Fields',
+        name: 'roleEditFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: {
+          show: { operation: ['edit-role'] },
+        },
+        default: {},
+        description: 'Fields to update on the role. At least one must be set.',
+        options: [
+          {
+            displayName: 'Color',
+            name: 'color',
+            type: 'color',
+            default: '',
+            description: 'New color for the role, for example #5865F2',
+          },
+          {
+            displayName: 'Display Separately (Hoist)',
+            name: 'hoist',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to display role members separately from online members',
+          },
+          {
+            displayName: 'Mentionable',
+            name: 'mentionable',
+            type: 'boolean',
+            default: false,
+            description: 'Whether this role can be @mentioned by anyone',
+          },
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+            description: 'New name for the role',
+          },
+          {
+            displayName: 'Reason',
+            name: 'reason',
+            type: 'string',
+            default: '',
+            description: 'Reason recorded in the guild audit log',
+          },
+        ],
+      },
+
+      // ─── Delete Role Fields ──────────────────────────────────────────────────
+      {
+        displayName: 'Reason',
+        name: 'roleDeleteReason',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-role'] },
+        },
+        default: '',
+        description: 'Reason recorded in the guild audit log',
+      },
     ],
   };
 
@@ -3342,6 +3767,243 @@ export class DiscordBot implements INodeType {
           json: { operation, guildId, count: eventList.length, events: eventList },
           pairedItem: { item: i },
         });
+        continue;
+      }
+
+      // ─── Channel Management Operations ──────────────────────────────────────
+
+      if (operation === 'create-channel') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('channelMgmtGuildId', i) as string;
+        const name = this.getNodeParameter('channelCreateName', i) as string;
+        const channelType = this.getNodeParameter('channelCreateType', i, 0) as number;
+        const createFields = this.getNodeParameter('channelCreateFields', i, {}) as {
+          topic?: string;
+          parentId?: string;
+          rateLimitPerUser?: number;
+          nsfw?: boolean;
+          position?: number;
+          bitrate?: number;
+          userLimit?: number;
+          reason?: string;
+        };
+
+        const guild = await client.guilds.fetch(guildId);
+        const createOptions: Record<string, unknown> = { name, type: channelType };
+        if (createFields.topic) createOptions.topic = createFields.topic;
+        if (createFields.parentId) createOptions.parent = createFields.parentId;
+        if (createFields.rateLimitPerUser) createOptions.rateLimitPerUser = createFields.rateLimitPerUser;
+        if (createFields.nsfw !== undefined) createOptions.nsfw = createFields.nsfw;
+        if (createFields.position !== undefined) createOptions.position = createFields.position;
+        if (createFields.bitrate) createOptions.bitrate = createFields.bitrate;
+        if (createFields.userLimit) createOptions.userLimit = createFields.userLimit;
+        if (createFields.reason) createOptions.reason = createFields.reason;
+
+        const channel = await (guild.channels as any).create(createOptions);
+        returnData.push({
+          json: {
+            operation,
+            channelId: channel.id,
+            channelName: channel.name,
+            channelType: channel.type,
+            guildId: channel.guildId,
+            parentId: channel.parentId ?? null,
+            position: channel.position,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'edit-channel') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('channelMgmtChannelId', i) as string;
+        const editFields = this.getNodeParameter('channelEditFields', i, {}) as {
+          name?: string;
+          topic?: string;
+          parentId?: string;
+          rateLimitPerUser?: number;
+          nsfw?: boolean;
+          position?: number;
+          bitrate?: number;
+          userLimit?: number;
+          reason?: string;
+        };
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} not found`);
+        }
+
+        const editOptions: Record<string, unknown> = {};
+        if (editFields.name) editOptions.name = editFields.name;
+        if (editFields.topic !== undefined) editOptions.topic = editFields.topic;
+        if (editFields.parentId) editOptions.parent = editFields.parentId;
+        if (editFields.rateLimitPerUser !== undefined) editOptions.rateLimitPerUser = editFields.rateLimitPerUser;
+        if (editFields.nsfw !== undefined) editOptions.nsfw = editFields.nsfw;
+        if (editFields.position !== undefined) editOptions.position = editFields.position;
+        if (editFields.bitrate) editOptions.bitrate = editFields.bitrate;
+        if (editFields.userLimit !== undefined) editOptions.userLimit = editFields.userLimit;
+        if (editFields.reason) editOptions.reason = editFields.reason;
+
+        if (Object.keys(editOptions).length === 0) {
+          throw new NodeOperationError(this.getNode(), 'Add at least one field to edit (Name, Topic, Slowmode, etc.)');
+        }
+
+        const updated = await (channel as any).edit(editOptions);
+        returnData.push({
+          json: { operation, channelId: updated.id, channelName: updated.name, updated: true },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'delete-channel') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('channelMgmtChannelId', i) as string;
+        const reason = this.getNodeParameter('channelDeleteReason', i, '') as string;
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} not found`);
+        }
+        await (channel as any).delete(reason || undefined);
+        returnData.push({ json: { operation, channelId, deleted: true }, pairedItem: { item: i } });
+        continue;
+      }
+
+      if (operation === 'create-invite') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('channelMgmtChannelId', i) as string;
+        const inviteFields = this.getNodeParameter('inviteCreateFields', i, {}) as {
+          maxAge?: number;
+          maxUses?: number;
+          temporary?: boolean;
+          unique?: boolean;
+          reason?: string;
+        };
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !('createInvite' in channel)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} does not support invites`);
+        }
+        const invite = await (channel as any).createInvite({
+          maxAge: inviteFields.maxAge ?? 86400,
+          maxUses: inviteFields.maxUses ?? 0,
+          temporary: inviteFields.temporary ?? false,
+          unique: inviteFields.unique ?? false,
+          reason: inviteFields.reason || undefined,
+        });
+        returnData.push({
+          json: {
+            operation,
+            inviteCode: invite.code,
+            inviteUrl: invite.url,
+            channelId: invite.channelId,
+            guildId: invite.guildId,
+            maxAge: invite.maxAge,
+            maxUses: invite.maxUses,
+            temporary: invite.temporary,
+            expiresAt: invite.expiresAt?.toISOString() ?? null,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      // ─── Role Management Operations ──────────────────────────────────────────
+
+      if (operation === 'create-role') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('roleMgmtGuildId', i) as string;
+        const name = this.getNodeParameter('roleCreateName', i) as string;
+        const createFields = this.getNodeParameter('roleCreateFields', i, {}) as {
+          color?: string;
+          hoist?: boolean;
+          mentionable?: boolean;
+          reason?: string;
+        };
+
+        const guild = await client.guilds.fetch(guildId);
+        const role = await (guild.roles as any).create({
+          name,
+          ...(createFields.color ? { color: createFields.color } : {}),
+          hoist: createFields.hoist ?? false,
+          mentionable: createFields.mentionable ?? false,
+          ...(createFields.reason ? { reason: createFields.reason } : {}),
+        });
+        returnData.push({
+          json: {
+            operation,
+            roleId: role.id,
+            roleName: role.name,
+            guildId: role.guild.id,
+            color: role.hexColor,
+            hoist: role.hoist,
+            mentionable: role.mentionable,
+            position: role.position,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'edit-role') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('roleMgmtGuildId', i) as string;
+        const roleId = this.getNodeParameter('roleMgmtRoleId', i) as string;
+        const editFields = this.getNodeParameter('roleEditFields', i, {}) as {
+          name?: string;
+          color?: string;
+          hoist?: boolean;
+          mentionable?: boolean;
+          reason?: string;
+        };
+
+        const guild = await client.guilds.fetch(guildId);
+        const role = await guild.roles.fetch(roleId);
+        if (!role) {
+          throw new NodeOperationError(this.getNode(), `Role ${roleId} not found in guild ${guildId}`);
+        }
+
+        const editOptions: Record<string, unknown> = {};
+        if (editFields.name) editOptions.name = editFields.name;
+        if (editFields.color) editOptions.color = editFields.color;
+        if (editFields.hoist !== undefined) editOptions.hoist = editFields.hoist;
+        if (editFields.mentionable !== undefined) editOptions.mentionable = editFields.mentionable;
+        if (editFields.reason) editOptions.reason = editFields.reason;
+
+        if (Object.keys(editOptions).length === 0) {
+          throw new NodeOperationError(this.getNode(), 'Add at least one field to edit (Name, Color, Hoist, Mentionable)');
+        }
+
+        const updated = await role.edit(editOptions as any);
+        returnData.push({
+          json: {
+            operation,
+            roleId: updated.id,
+            roleName: updated.name,
+            guildId: updated.guild.id,
+            color: updated.hexColor,
+            hoist: updated.hoist,
+            mentionable: updated.mentionable,
+            position: updated.position,
+            updated: true,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'delete-role') {
+        const client = await getClient(credentials);
+        const guildId = this.getNodeParameter('roleMgmtGuildId', i) as string;
+        const roleId = this.getNodeParameter('roleMgmtRoleId', i) as string;
+        const reason = this.getNodeParameter('roleDeleteReason', i, '') as string;
+
+        const guild = await client.guilds.fetch(guildId);
+        await guild.roles.delete(roleId, reason || undefined);
+        returnData.push({ json: { operation, guildId, roleId, deleted: true }, pairedItem: { item: i } });
         continue;
       }
 
