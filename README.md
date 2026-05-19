@@ -2,7 +2,7 @@
 
 n8n community node for building Discord bots:
 
-- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, modal submissions, and thread events.
+- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, modal submissions, thread events, and voice state changes.
 - Send bot messages to channels or DMs.
 - Edit existing bot messages.
 - Register slash commands.
@@ -68,6 +68,7 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | Thread Created | Triggered when a new thread is created in a guild channel |
 | Thread Updated | Triggered when a thread is edited (name, archived state, locked state, etc.) |
 | Thread Deleted | Triggered when a thread is deleted |
+| Voice State Update | Triggered when a user joins, leaves, moves between, or changes state in a voice channel |
 
 ---
 
@@ -387,6 +388,52 @@ Output: `{ operation, threadId, userId }`
 
 ---
 
+## Voice State Management
+
+### Voice State Update Trigger
+
+Fires whenever a user's voice state changes in a guild — joining, leaving, moving between channels, or toggling mute/deafen/stream/video.
+
+Requires the **Server Members Intent** to be enabled on your Discord bot.
+
+**Subtype values:**
+
+| Subtype | When it fires |
+|---------|---------------|
+| `join` | User enters a voice channel from no channel |
+| `leave` | User leaves a voice channel and is now in no channel |
+| `move` | User moves from one voice channel to another |
+| `update` | User stays in the same channel but changes mute/deafen/stream/video state |
+
+**Output fields:**
+
+| Field | Description |
+|-------|-------------|
+| subtype | `join`, `leave`, `move`, or `update` |
+| guildId | Guild where the event occurred |
+| userId | Discord ID of the user |
+| userName | Username of the user |
+| userDisplayName | Display name (server nickname if set, otherwise global name or username) |
+| userGlobalName | Global display name, or null |
+| userTag | Discord tag (e.g. `User#0000`) |
+| userAvatarUrl | URL of the user's avatar |
+| memberNickname | Server nickname, or null |
+| memberRoleIds | Array of role IDs held by the member (excludes `@everyone`) |
+| oldChannelId | Voice channel ID the user was in before, or null |
+| newChannelId | Voice channel ID the user is in now, or null |
+| oldChannelName | Name of the previous voice channel, or null |
+| newChannelName | Name of the current voice channel, or null |
+| selfMute | Whether the user has muted themselves |
+| selfDeaf | Whether the user has deafened themselves |
+| serverMute | Whether the user has been server-muted by a moderator |
+| serverDeaf | Whether the user has been server-deafened by a moderator |
+| streaming | Whether the user is screen-sharing (Go Live) |
+| selfVideo | Whether the user has their camera on |
+
+**Optional filters:** **Guild** (restrict to specific guilds) and **Voice Channel** (restrict to specific voice or stage channels — for `move` events, triggers if either the old or new channel matches).
+
+---
+
 ## Typical workflow patterns
 
 ### Slash command bot
@@ -434,6 +481,7 @@ Output: `{ operation, threadId, userId }`
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
 
 ## Milestone Versions
+- **v1.3.0**: Voice State Trigger — triggers on users joining, leaving, moving between, or changing state in voice channels; emits subtype (join/leave/move/update), channel info, and full mute/deafen/stream/video state.
 - **v1.2.0**: Thread Management — Create threads from messages or standalone; edit threads (archive, lock, rename, auto-archive duration); add/remove thread members; new triggers: Thread Created, Thread Updated, Thread Deleted.
 - **v1.1.4**: Message management operations (delete, fetch, history, add/remove reactions, pin/unpin, bulk delete); Send Modal; Member management (add/remove roles, kick, ban, unban, timeout, fetch member, set nickname); New triggers: Member Joined, Member Left, Member Updated, Message Edited, Message Deleted, Ban Added, Ban Removed.
 - **v1.1.3**: Stable release. README documentation pass.

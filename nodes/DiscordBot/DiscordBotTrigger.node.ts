@@ -18,6 +18,7 @@ import {
   loadChannelOptions,
   loadGuildOptions,
   loadRoleOptions,
+  loadVoiceChannelOptions,
 } from './clientManager';
 import type { DiscordBotCredentials } from './types';
 
@@ -38,7 +39,8 @@ type TriggerType =
   | 'message-edit'
   | 'thread-create'
   | 'thread-delete'
-  | 'thread-update';
+  | 'thread-update'
+  | 'voice-state-update';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -363,6 +365,7 @@ export class DiscordBotTrigger implements INodeType {
           { name: 'Thread Created', value: 'thread-create' },
           { name: 'Thread Deleted', value: 'thread-delete' },
           { name: 'Thread Updated', value: 'thread-update' },
+          { name: 'Voice State Update', value: 'voice-state-update' },
         ],
         default: 'channel-message',
       },
@@ -375,7 +378,7 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete'],
+            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete', 'voice-state-update'],
           },
         },
         default: [],
@@ -412,6 +415,22 @@ export class DiscordBotTrigger implements INodeType {
         },
         default: [],
         description: 'Only trigger for threads in selected parent channels (leave empty for all). Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Voice Channel Names or IDs',
+        name: 'voiceChannelIds',
+        type: 'multiOptions',
+        typeOptions: {
+          loadOptionsMethod: 'getVoiceChannels',
+          loadOptionsDependsOn: ['guildIds'],
+        },
+        displayOptions: {
+          show: {
+            event: ['voice-state-update'],
+          },
+        },
+        default: [],
+        description: 'Only trigger for activity in selected voice channels (leave empty for all). For move events, triggers if either the old or new channel matches. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
       },
       {
         displayName: 'From Role Names or IDs',
@@ -570,6 +589,14 @@ export class DiscordBotTrigger implements INodeType {
           throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
         }
         return loadRoleOptions(credentials, guildIds);
+      },
+      async getVoiceChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+        const guildIds = this.getNodeParameter('guildIds', 0) as string[];
+        if (!guildIds.length) {
+          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+        }
+        return loadVoiceChannelOptions(credentials, guildIds);
       },
     },
   };
@@ -1183,6 +1210,67 @@ export class DiscordBotTrigger implements INodeType {
               threadName: thread.name,
               parentChannelId: thread.parentId,
               guildId: thread.guildId,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    // ─── Voice State Events ───────────────────────────────────────────────────
+
+    if (event === 'voice-state-update') {
+      const voiceChannelIds = normalizeSelectedValues(this.getNodeParameter('voiceChannelIds', []));
+
+      removeListeners.push(
+        addClientListener(client, 'voiceStateUpdate', async (oldState, newState) => {
+          if (!passGuildFilter(newState.guild.id, newState.guild.name)) return;
+
+          // Determine subtype
+          let subtype: 'join' | 'leave' | 'move' | 'update';
+          if (!oldState.channelId && newState.channelId) {
+            subtype = 'join';
+          } else if (oldState.channelId && !newState.channelId) {
+            subtype = 'leave';
+          } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+            subtype = 'move';
+          } else {
+            subtype = 'update';
+          }
+
+          // Voice channel filter: for leave check old channel, for join check new, for move check either
+          if (voiceChannelIds.length > 0) {
+            const oldMatch = oldState.channelId ? voiceChannelIds.includes(oldState.channelId) : false;
+            const newMatch = newState.channelId ? voiceChannelIds.includes(newState.channelId) : false;
+            if (!oldMatch && !newMatch) return;
+          }
+
+          const member = newState.member ?? oldState.member;
+          const user = member?.user;
+          if (!user) return;
+
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: 'voice-state-update',
+              subtype,
+              guildId: newState.guild.id,
+              userId: user.id,
+              userName: user.username,
+              userDisplayName: member.displayName,
+              userGlobalName: user.globalName ?? null,
+              userTag: user.tag,
+              userAvatarUrl: user.displayAvatarURL(),
+              memberNickname: member.nickname,
+              memberRoleIds: [...member.roles.cache.keys()].filter((id) => id !== newState.guild.id),
+              oldChannelId: oldState.channelId,
+              newChannelId: newState.channelId,
+              oldChannelName: oldState.channel?.name ?? null,
+              newChannelName: newState.channel?.name ?? null,
+              selfMute: newState.selfMute,
+              selfDeaf: newState.selfDeaf,
+              serverMute: newState.serverMute,
+              serverDeaf: newState.serverDeaf,
+              streaming: newState.streaming,
+              selfVideo: newState.selfVideo,
             }),
           ]);
         }),

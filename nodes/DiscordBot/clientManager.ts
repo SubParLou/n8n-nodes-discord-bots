@@ -21,6 +21,7 @@ function createDiscordClient(token: string): CachedDiscordClient {
       GatewayIntentBits.GuildModeration,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildMessageReactions,
+      GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.DirectMessages,
       GatewayIntentBits.DirectMessageReactions,
       GatewayIntentBits.MessageContent,
@@ -122,6 +123,44 @@ export async function loadChannelOptions(
         });
       } catch (error) {
         console.warn('[DiscordBot] Failed to load channel options for guild', {
+          guildId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }),
+  );
+
+  return [...optionsById.values()];
+}
+
+export async function loadVoiceChannelOptions(
+  credentials: DiscordBotCredentials,
+  guildIds: string[],
+): Promise<INodePropertyOptions[]> {
+  const client = await getClient(credentials);
+  const uniqueGuildIds = [...new Set(guildIds)];
+  const optionsById = new Map<string, INodePropertyOptions>();
+
+  await Promise.all(
+    uniqueGuildIds.map(async (guildId) => {
+      try {
+        const guild = await client.guilds.fetch(guildId);
+        const channels = await guild.channels.fetch();
+
+        channels.forEach((channel) => {
+          if (!channel) {
+            return;
+          }
+
+          if (channel.type === ChannelType.GuildVoice || channel.type === ChannelType.GuildStageVoice) {
+            optionsById.set(channel.id, {
+              name: `${guild.name} / ${channel.name}`,
+              value: channel.id,
+            });
+          }
+        });
+      } catch (error) {
+        console.warn('[DiscordBot] Failed to load voice channel options for guild', {
           guildId,
           error: error instanceof Error ? error.message : String(error),
         });

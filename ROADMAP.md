@@ -24,7 +24,6 @@ This document compares the current node capabilities against the full Discord.js
 ### New Trigger Events
 | Feature | discord.js event | n8n Feasibility | Milestone |
 |---------|-----------------|-----------------|-----------|
-| Voice State Update (join/leave/move voice channel) | `voiceStateUpdate` | ✅ Fully feasible — needs `GuildVoiceStates` intent | v1.3.0 |
 | Context Menu Command Invoked (user or message right-click) | `interactionCreate` | ✅ Fully feasible — `interactionCreate` already handled | v1.6.0 |
 | Guild Scheduled Event Created/Updated/Deleted | `guildScheduledEvent*` | ✅ Fully feasible — needs `GuildScheduledEvents` intent | v1.4.0 |
 | Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v2.0.0 |
@@ -93,7 +92,7 @@ This document compares the current node capabilities against the full Discord.js
 |-----------|-------|-------------|
 | ~~**v1.1.4**~~ | ~~High-Priority Operations & Triggers~~ | ~~Message management (delete, fetch, history, reactions, pin/unpin, bulk delete); Send Modal; Member management (roles, kick, ban, timeout, nickname); Triggers: member join/leave/update, message edit/delete, ban add/remove~~ **✅ Shipped** |
 | ~~**v1.2.0**~~ | ~~Thread Management~~ | ~~Create, edit, delete threads; add/remove thread members; thread event triggers~~ **✅ Shipped** |
-| **v1.3.0** | Voice State Trigger | Trigger on users joining, leaving, or moving between voice channels |
+| ~~**v1.3.0**~~ | ~~Voice State Trigger~~ | ~~Trigger on users joining, leaving, or moving between voice channels~~ **✅ Shipped** |
 | **v1.4.0** | Guild Scheduled Events | Create/edit/delete/list scheduled events; scheduled event triggers |
 | **v1.5.0** | Channel & Role Management | Create/edit/delete channels and roles; create invites |
 | **v1.6.0** | Context Menu Commands | Register user/message context menu commands; context menu interaction trigger |
