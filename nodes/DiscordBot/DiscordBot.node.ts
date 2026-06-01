@@ -103,6 +103,7 @@ export class DiscordBot implements INodeType {
     group: ['transform'],
     version: 1,
     description: 'Send messages and manage slash commands for Discord bots',
+    usableAsTool: true,
     defaults: {
       name: 'Discord Bot',
     },
