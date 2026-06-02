@@ -3453,13 +3453,24 @@ export class DiscordBot implements INodeType {
             userId: member.id,
             guildId: guild.id,
             userName: member.user.username,
+            globalName: member.user.globalName ?? null,
             displayName: member.displayName,
             nickname: member.nickname,
+            accountCreatedAt: member.user.createdAt.toISOString(),
             joinedAt: member.joinedAt?.toISOString() ?? null,
             // Filter @everyone role (same ID as guild)
             roleIds: [...member.roles.cache.keys()].filter((id) => id !== guild.id),
             isBot: member.user.bot,
             userAvatarUrl: member.user.displayAvatarURL(),
+            serverAvatarUrl: member.avatarURL() ?? null,
+            isBoosting: member.premiumSince !== null,
+            boostingSince: member.premiumSince?.toISOString() ?? null,
+            userFlags: member.user.flags?.toArray() ?? [],
+            pending: member.pending,
+            // Presence fields require the GuildPresences privileged intent to be
+            // enabled both here and in the Discord Developer Portal; null otherwise.
+            status: member.presence?.status ?? null,
+            clientStatus: member.presence?.clientStatus ?? null,
           },
           pairedItem: { item: i },
         });

@@ -21,6 +21,7 @@ function createDiscordClient(token: string): CachedDiscordClient {
       GatewayIntentBits.GuildModeration,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildMessageReactions,
+      GatewayIntentBits.GuildPresences,
       GatewayIntentBits.GuildScheduledEvents,
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.DirectMessages,

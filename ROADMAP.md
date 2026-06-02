@@ -14,6 +14,7 @@ This document compares the current node capabilities against the full Discord.js
 | Actions: delete message, fetch message, fetch history, add/remove reactions, pin/unpin, bulk delete | ✅ v1.1.4 |
 | Actions: send modal to an interaction | ✅ v1.1.4 |
 | Actions: add/remove roles, kick, ban, unban, timeout, fetch member, set nickname | ✅ v1.1.4 |
+| Actions: Fetch Member now returns globalName, accountCreatedAt, serverAvatarUrl, isBoosting, boostingSince, userFlags, pending, status, clientStatus | ✅ v1.5.3 |
 | Triggers: Voice State (join/leave/move between voice channels) | ✅ v1.3.0 |
 | Triggers: Guild Scheduled Event created/updated/deleted | ✅ v1.4.0 |
 | Actions: create/edit/delete/list guild scheduled events | ✅ v1.4.0 |
