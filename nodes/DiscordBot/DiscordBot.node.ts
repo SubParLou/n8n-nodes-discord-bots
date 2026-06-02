@@ -18,6 +18,7 @@ import {
   getClient,
   loadChannelOptions,
   loadGuildOptions,
+  registerContextMenuCommand,
   registerSlashCommand,
 } from './clientManager';
 import type { DiscordBotCredentials } from './types';
@@ -35,6 +36,7 @@ import {
 type Operation =
   | 'send-message'
   | 'update-message'
+  | 'register-context-menu-command'
   | 'register-slash-command'
   | 'respond-to-interaction'
   | 'add-reaction'
@@ -148,6 +150,7 @@ export class DiscordBot implements INodeType {
           { name: 'Kick Member', value: 'kick-member' },
           { name: 'List Scheduled Events', value: 'list-scheduled-events' },
           { name: 'Pin Message', value: 'pin-message' },
+          { name: 'Register Context Menu Command', value: 'register-context-menu-command' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
           { name: 'Remove Own Reaction', value: 'remove-own-reaction' },
           { name: 'Remove Role From Member', value: 'remove-role' },
@@ -1520,6 +1523,57 @@ export class DiscordBot implements INodeType {
         },
         default: '[]',
         description: 'Advanced: JSON array for slash command options (use if the builder above does not meet your needs)',
+      },
+
+      // ─── Register Context Menu Command Fields ───────────────────────────────
+      {
+        displayName: 'Command Type',
+        name: 'contextMenuCommandType',
+        type: 'options',
+        displayOptions: {
+          show: {
+            operation: ['register-context-menu-command'],
+          },
+        },
+        default: 'user',
+        options: [
+          {
+            name: 'User',
+            value: 'user',
+            description: 'Appears in the right-click menu on a server member',
+          },
+          {
+            name: 'Message',
+            value: 'message',
+            description: 'Appears in the right-click menu on a channel message',
+          },
+        ],
+        required: true,
+      },
+      {
+        displayName: 'Command Name',
+        name: 'contextMenuCommandName',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['register-context-menu-command'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The label shown in the Discord right-click menu (1–32 characters; can include spaces and mixed case)',
+      },
+      {
+        displayName: 'Guild ID',
+        name: 'contextMenuCommandGuildId',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['register-context-menu-command'],
+          },
+        },
+        default: '',
+        description: 'Register as a guild-scoped command (instant). Leave empty to register globally (up to 1 hour to propagate).',
       },
 
       // ─── Message Operation Shared Fields ───────────────────────────────────
@@ -2940,6 +2994,42 @@ export class DiscordBot implements INodeType {
             channelId,
             messageId,
             content,
+          },
+          pairedItem: { item: i },
+        });
+
+        continue;
+      }
+
+      if (operation === 'register-context-menu-command') {
+        const commandType = this.getNodeParameter('contextMenuCommandType', i) as 'user' | 'message';
+        const commandName = this.getNodeParameter('contextMenuCommandName', i) as string;
+        const commandGuildId = this.getNodeParameter('contextMenuCommandGuildId', i, '') as string;
+
+        if (!commandName.trim()) {
+          throw new NodeOperationError(this.getNode(), 'Command Name is required');
+        }
+        if (commandName.length > 32) {
+          throw new NodeOperationError(this.getNode(), 'Command Name must be 32 characters or fewer (Discord requirement)');
+        }
+
+        const typeNumber = commandType === 'user' ? 2 : 3;
+        const command = await registerContextMenuCommand({
+          token: credentials.token,
+          clientId: credentials.clientId,
+          guildId: commandGuildId || undefined,
+          name: commandName,
+          type: typeNumber,
+        });
+
+        returnData.push({
+          json: {
+            operation,
+            commandId: command.id,
+            commandName: command.name,
+            commandType,
+            scope: commandGuildId ? 'guild' : 'global',
+            guildId: commandGuildId || null,
           },
           pairedItem: { item: i },
         });
