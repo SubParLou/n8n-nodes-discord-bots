@@ -24,6 +24,7 @@ import type { DiscordBotCredentials } from './types';
 
 type TriggerType =
   | 'channel-message'
+  | 'context-menu-command'
   | 'direct-message'
   | 'reaction-add'
   | 'reaction-remove'
@@ -297,6 +298,50 @@ function buildInteractionPayload(interaction: Interaction) {
     };
   }
 
+  if (interaction.isUserContextMenuCommand()) {
+    const targetMemberInfo = buildMemberInfo(interaction.targetMember as Interaction['member']);
+    return {
+      ...base,
+      type: 'context-menu-command',
+      commandType: 'user',
+      commandName: interaction.commandName,
+      commandId: interaction.commandId,
+      targetUserId: interaction.targetUser.id,
+      targetUserName: interaction.targetUser.username,
+      targetUserGlobalName: interaction.targetUser.globalName ?? null,
+      targetUserAvatarUrl: interaction.targetUser.displayAvatarURL(),
+      targetUserIsBot: interaction.targetUser.bot,
+      targetMemberDisplayName: targetMemberInfo.memberDisplayName,
+      targetMemberNickname: targetMemberInfo.memberNickname,
+      targetMemberRoleIds: targetMemberInfo.memberRoleIds,
+    };
+  }
+
+  if (interaction.isMessageContextMenuCommand()) {
+    const msg = interaction.targetMessage;
+    return {
+      ...base,
+      type: 'context-menu-command',
+      commandType: 'message',
+      commandName: interaction.commandName,
+      commandId: interaction.commandId,
+      targetMessageId: msg.id,
+      targetMessageChannelId: msg.channelId,
+      targetMessageContent: msg.content,
+      targetMessageAuthorId: msg.author.id,
+      targetMessageAuthorName: msg.author.username,
+      targetMessageAuthorGlobalName: msg.author.globalName ?? null,
+      targetMessageCreatedTimestamp: msg.createdTimestamp,
+      targetMessageAttachments: [...msg.attachments.values()].map((a) => ({
+        id: a.id,
+        name: a.name,
+        contentType: a.contentType,
+        size: a.size,
+        url: a.url,
+      })),
+    };
+  }
+
   if (interaction.isButton() || interaction.isAnySelectMenu()) {
     return {
       ...base,
@@ -354,6 +399,7 @@ export class DiscordBotTrigger implements INodeType {
           { name: 'Ban Added', value: 'ban-add' },
           { name: 'Ban Removed', value: 'ban-remove' },
           { name: 'Component Interaction', value: 'component-interaction' },
+          { name: 'Context Menu Command', value: 'context-menu-command' },
           { name: 'Member Joined', value: 'member-join' },
           { name: 'Member Left', value: 'member-leave' },
           { name: 'Member Updated', value: 'member-update' },
@@ -384,7 +430,7 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete', 'voice-state-update', 'scheduled-event-create', 'scheduled-event-update', 'scheduled-event-delete'],
+            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'context-menu-command', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete', 'voice-state-update', 'scheduled-event-create', 'scheduled-event-update', 'scheduled-event-delete'],
           },
         },
         default: [],
@@ -544,6 +590,46 @@ export class DiscordBotTrigger implements INodeType {
         default: '',
       },
       {
+        displayName: 'Command Name',
+        name: 'contextMenuCommandName',
+        type: 'string',
+        displayOptions: {
+          show: {
+            event: ['context-menu-command'],
+          },
+        },
+        default: '',
+        description: 'Filter by exact command name as shown in the right-click menu. Leave empty to trigger for all context menu commands of the selected type.',
+      },
+      {
+        displayName: 'Command Type',
+        name: 'contextMenuCommandType',
+        type: 'options',
+        displayOptions: {
+          show: {
+            event: ['context-menu-command'],
+          },
+        },
+        default: 'any',
+        options: [
+          {
+            name: 'Any',
+            value: 'any',
+            description: 'Trigger for both user and message context menu commands',
+          },
+          {
+            name: 'User',
+            value: 'user',
+            description: 'Trigger only when a user context menu command is invoked (right-click on a member)',
+          },
+          {
+            name: 'Message',
+            value: 'message',
+            description: 'Trigger only when a message context menu command is invoked (right-click on a message)',
+          },
+        ],
+      },
+      {
         displayName: 'Additional Fields',
         name: 'additionalFields',
         type: 'collection',
@@ -624,6 +710,8 @@ export class DiscordBotTrigger implements INodeType {
     const slashCommandName = this.getNodeParameter('slashCommandName', '') as string;
     const normalizedSlashCommandName = normalizeSlashCommandName(slashCommandName);
     const customId = this.getNodeParameter('customId', '') as string;
+    const contextMenuCommandName = this.getNodeParameter('contextMenuCommandName', '') as string;
+    const contextMenuCommandType = this.getNodeParameter('contextMenuCommandType', 'any') as 'user' | 'message' | 'any';
     const additionalFields = this.getNodeParameter('additionalFields', {}) as {
       includeBotMessages?: boolean;
       autoAcknowledge?: boolean;
@@ -924,7 +1012,7 @@ export class DiscordBotTrigger implements INodeType {
       );
     }
 
-    if (event === 'slash-command' || event === 'component-interaction' || event === 'modal-submit') {
+    if (event === 'slash-command' || event === 'component-interaction' || event === 'modal-submit' || event === 'context-menu-command') {
       removeListeners.push(
         addClientListener(client, 'interactionCreate', async (interaction) => {
           if (!passGuildFilter(interaction.guildId, interaction.guild?.name ?? null)) {
@@ -944,6 +1032,31 @@ export class DiscordBotTrigger implements INodeType {
             if (autoAcknowledge && !interaction.deferred && !interaction.replied) {
               await interaction.deferReply({ ephemeral: ackEphemeral }).catch((error) => {
                 logNonCriticalError('Failed to auto-acknowledge slash command interaction', error, {
+                  event,
+                  interactionId: interaction.id,
+                });
+              });
+            }
+            this.emit([this.helpers.returnJsonArray(buildInteractionPayload(interaction))]);
+            return;
+          }
+
+          if (event === 'context-menu-command') {
+            if (!(interaction.isUserContextMenuCommand() || interaction.isMessageContextMenuCommand())) {
+              return;
+            }
+            if (contextMenuCommandType === 'user' && !interaction.isUserContextMenuCommand()) {
+              return;
+            }
+            if (contextMenuCommandType === 'message' && !interaction.isMessageContextMenuCommand()) {
+              return;
+            }
+            if (contextMenuCommandName && interaction.commandName !== contextMenuCommandName) {
+              return;
+            }
+            if (autoAcknowledge && !interaction.deferred && !interaction.replied) {
+              await interaction.deferReply({ ephemeral: ackEphemeral }).catch((error) => {
+                logNonCriticalError('Failed to auto-acknowledge context menu command interaction', error, {
                   event,
                   interactionId: interaction.id,
                 });

@@ -234,3 +234,25 @@ export async function registerSlashCommand(parameters: {
 
   return response;
 }
+
+// ApplicationCommandType: 2 = User context menu, 3 = Message context menu
+export async function registerContextMenuCommand(parameters: {
+  token: string;
+  clientId: string;
+  guildId?: string;
+  name: string;
+  type: 2 | 3;
+}): Promise<{ id: string; name: string; type: number }> {
+  const { token, clientId, guildId, name, type } = parameters;
+
+  const rest = new REST({ version: '10' }).setToken(token);
+  const route = guildId
+    ? Routes.applicationGuildCommands(clientId, guildId)
+    : Routes.applicationCommands(clientId);
+
+  const response = (await rest.post(route, {
+    body: { name, type },
+  })) as { id: string; name: string; type: number };
+
+  return response;
+}

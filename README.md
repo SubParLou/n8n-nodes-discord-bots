@@ -2,10 +2,10 @@
 
 n8n community node for building Discord bots:
 
-- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, modal submissions, thread events, voice state changes, and guild scheduled events.
+- Trigger workflows from direct messages, channel messages, message reactions, slash commands, component interactions, context menu commands, modal submissions, thread events, voice state changes, and guild scheduled events.
 - Send bot messages to channels or DMs.
 - Edit existing bot messages.
-- Register slash commands.
+- Register slash commands and context menu commands (right-click on users or messages).
 - Respond to Discord interactions from workflow data.
 - Build rich messages with embeds, buttons, and select menus using a visual builder or raw JSON.
 - Manage Discord threads — create from messages or standalone, edit (rename, archive, lock), and add or remove thread members.
@@ -66,6 +66,7 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | Reaction Removed | Triggered when a reaction is removed from a message |
 | Slash Command | Triggered when a user invokes a registered slash command |
 | Component Interaction | Triggered when a user clicks a button or uses a select menu |
+| Context Menu Command | Triggered when a user right-clicks a member or message and selects a registered context menu command |
 | Modal Submit | Triggered when a user submits a modal form |
 | Member Joined | Triggered when a user joins the guild |
 | Member Left | Triggered when a user leaves or is removed from the guild |
@@ -131,6 +132,63 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | createdTimestamp | Unix timestamp (ms) of the message |
 | attachments | Array of attachment objects: `{ id, name, contentType, size, url }` |
 | referencedMessage | If the message is a reply: `{ messageId, channelId, content, authorId, authorName, createdTimestamp }`. `null` if not a reply. If the original message was deleted: `{ messageId, channelId }`. |
+
+---
+
+### Context Menu Command Trigger
+
+Fires when a user invokes a registered context menu command (right-click on a guild member or a message).
+
+**Filters:**
+
+| Filter | Description |
+|--------|-------------|
+| Guild | Restrict to one or more guilds |
+| Command Name | Only fire for a specific command name (exact match) |
+| Command Type | `Any` (default), `User` (right-click on a member), or `Message` (right-click on a message) |
+| Auto Acknowledge Interaction | Immediately acknowledge the interaction (gives the workflow up to 15 minutes to respond) |
+| Acknowledge Ephemeral | When auto-acknowledge is on, whether the deferred response is only visible to the invoking user |
+
+**Output fields common to all context menu commands:**
+
+| Field | Description |
+|-------|-------------|
+| type | `'context-menu-command'` |
+| commandType | `'user'` or `'message'` |
+| commandName | The name of the invoked command |
+| commandId | Discord application command ID |
+| interactionId | Discord interaction ID (use with Respond to Interaction) |
+| interactionToken | Interaction token (use with Respond to Interaction) |
+| userId | ID of the user who invoked the command |
+| userDisplayName | Display name of the invoking user |
+| guildId | Guild the interaction occurred in |
+| channelId | Channel the interaction occurred in |
+
+**Additional output for User type (right-click on a member):**
+
+| Field | Description |
+|-------|-------------|
+| targetUserId | Discord user ID of the right-clicked member |
+| targetUserName | Username of the right-clicked member |
+| targetUserGlobalName | Global display name of the right-clicked member |
+| targetUserAvatarUrl | Avatar URL of the right-clicked member |
+| targetUserIsBot | Whether the right-clicked member is a bot |
+| targetMemberDisplayName | Server display name (nickname if set, otherwise username) |
+| targetMemberNickname | Server nickname (null if none) |
+| targetMemberRoleIds | Array of role IDs assigned to the right-clicked member |
+
+**Additional output for Message type (right-click on a message):**
+
+| Field | Description |
+|-------|-------------|
+| targetMessageId | Discord message ID of the right-clicked message |
+| targetMessageChannelId | Channel ID the right-clicked message is in |
+| targetMessageContent | Text content of the right-clicked message |
+| targetMessageAuthorId | Discord user ID of the message author |
+| targetMessageAuthorName | Username of the message author |
+| targetMessageAuthorGlobalName | Global display name of the message author |
+| targetMessageCreatedTimestamp | Unix timestamp (ms) of when the message was sent |
+| targetMessageAttachments | Array of attachment objects: `{ id, name, contentType, size, url }` |
 
 ---
 
@@ -300,6 +358,17 @@ Registers or updates a slash command for the bot. Can be guild-scoped (instant) 
 The visual builder takes precedence; the JSON field is used only when no options are added via the builder.
 
 Output: `{ operation, commandId, commandName, scope, guildId }`
+
+#### Register Context Menu Command
+Registers a context menu command (right-click action) for the bot. Can be guild-scoped (instant) or global (up to 1 hour to propagate). Context menu commands appear in the right-click menu for users or messages — they have no description or parameters.
+
+| Parameter | Description |
+|-----------|-------------|
+| Command Type | **User** — appears in the right-click menu on a guild member; **Message** — appears in the right-click menu on a message |
+| Command Name | **1–32 characters**, can include spaces and mixed case (unlike slash commands) |
+| Guild ID | Guild to register under. Leave empty to register as a global command. |
+
+Output: `{ operation, commandId, commandName, commandType, scope, guildId }`
 
 #### Respond to Interaction
 Sends a response to a Discord slash command, button, select menu, or modal interaction. Must be called within 15 minutes of the interaction (3 seconds if not auto-acknowledged by the trigger).
@@ -683,9 +752,10 @@ Fetches all scheduled events in a guild.
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
 
 ## Milestone Versions
-- **v1.5.4**: Reply features — New **Bot Mentioned or Replied To** pattern fires when the bot is `@mentioned` or when a user replies to any of the bot's messages. All channel/DM message trigger events now include a `referencedMessage` field with the content and author of the original message when a reply is detected.
-- **v1.5.3**: Fetch Member enhancements — action now returns `globalName`, `accountCreatedAt`, `serverAvatarUrl`, `isBoosting`, `boostingSince`, `userFlags`, `pending`, `status`, and `clientStatus`; added `GuildPresences` privileged intent for live presence data.
-- **v1.5.2**: AI Tool support — Discord Bot node is exposed as an n8n AI Agent tool.
+- **v1.6.0**: Context Menu Commands — New **Register Context Menu Command** operation registers User or Message type right-click commands (1–32 chars, spaces allowed). New **Context Menu Command** trigger fires on invocation with full target user or target message data.
+- **v1.5.4**: Reply features — New **Bot Mentioned or Replied To** pattern fires when the bot is `@mentioned` or when a user replies to any of the bot's messages. All channel/DM message trigger events now include a `referencedMessage` field with the content and author of the original message when a reply is detected. -Issue #8
+- **v1.5.3**: Fetch Member enhancements — action now returns `globalName`, `accountCreatedAt`, `serverAvatarUrl`, `isBoosting`, `boostingSince`, `userFlags`, `pending`, `status`, and `clientStatus`; added `GuildPresences` privileged intent for live presence data. -Issue #9
+- **v1.5.2**: AI Tool support — Discord Bot node is exposed as an n8n AI Agent tool. -PR #10
 - **v1.5.0**: Channel & Role Management — 7 new operations: Create Channel, Edit Channel, Delete Channel, Create Invite, Create Role, Edit Role, Delete Role.
 - **v1.4.0**: Guild Scheduled Events — 4 new operations (Create, Edit, Delete, List Scheduled Events) and 3 new triggers (Scheduled Event Created/Updated/Deleted); requires `GuildScheduledEvents` intent; supports Voice Channel, Stage Channel, and External Location entity types.
 - **v1.3.0**: Voice State Trigger — triggers on users joining, leaving, moving between, or changing state in voice channels; emits subtype (join/leave/move/update), channel info, and full mute/deafen/stream/video state.

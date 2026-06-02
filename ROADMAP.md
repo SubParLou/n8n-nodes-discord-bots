@@ -19,6 +19,7 @@ This document compares the current node capabilities against the full Discord.js
 | Triggers: Voice State (join/leave/move between voice channels) | ✅ v1.3.0 |
 | Triggers: Guild Scheduled Event created/updated/deleted | ✅ v1.4.0 |
 | Actions: create/edit/delete/list guild scheduled events | ✅ v1.4.0 |
+| Actions: register context menu commands (user & message types); Context Menu Command trigger | ✅ v1.6.0 |
 | Message components: embeds, buttons (all 5 styles), string select menus, auto-populated select menus (user/role/mentionable/channel) | ✅ |
 | Message payload modes: visual builder, raw JSON, builder + JSON merge | ✅ |
 
@@ -29,8 +30,7 @@ This document compares the current node capabilities against the full Discord.js
 ### New Trigger Events
 | Feature | discord.js event | n8n Feasibility | Milestone |
 |---------|-----------------|-----------------|-----------|
-| Context Menu Command Invoked (user or message right-click) | `interactionCreate` | ✅ Fully feasible — `interactionCreate` already handled | v1.6.0 |
-| Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v2.0.0 |
+| Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v1.8.0 |
 
 
 ### New Operations — Channel & Role Management
@@ -44,12 +44,6 @@ This document compares the current node capabilities against the full Discord.js
 | Edit Role | `role.edit(options)` | ✅ Standard admin operation | v1.5.0 |
 | Delete Role | `role.delete()` | ✅ Standard admin operation | v1.5.0 |
 
-### New Operations — Context Menu Commands
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Register User Context Menu Command | REST `ApplicationCommandType.User` | ✅ Same REST path as slash command registration | v1.6.0 |
-| Register Message Context Menu Command | REST `ApplicationCommandType.Message` | ✅ Same REST path as slash command registration | v1.6.0 |
-
 ### New Operations — Bot Presence & Status
 | Feature | discord.js API | n8n Feasibility | Milestone |
 |---------|---------------|-----------------|-----------|
@@ -59,17 +53,17 @@ This document compares the current node capabilities against the full Discord.js
 ### New Message Features — Polls
 | Feature | discord.js API | n8n Feasibility | Milestone |
 |---------|---------------|-----------------|-----------|
-| Send Message with a Poll | `message.poll` option in `channel.send()` | ✅ Fully supported in discord.js v14.19+; needs `GuildMessagePolls` intent | v2.0.0 |
+| Send Message with a Poll | `message.poll` option in `channel.send()` | ✅ Fully supported in discord.js v14.19+; needs `GuildMessagePolls` intent | v1.8.0 |
 
 ### New Message Components — Discord Components v2
 | Feature | discord.js API | n8n Feasibility | Milestone |
 |---------|---------------|-----------------|-----------|
-| Text Display (rich text block without an embed) | `TextDisplayBuilder` | ✅ Supported in discord.js v14.19.3; incompatible with embeds on the same message (Components v2 flag required) | v2.1.0 |
-| Section (side-by-side thumbnail + text accessory) | `SectionBuilder` | ✅ Supported | v2.1.0 |
-| Separator (visual divider between content blocks) | `SeparatorBuilder` | ✅ Supported | v2.1.0 |
-| Container (grouped content block with optional accent color) | `ContainerBuilder` | ✅ Supported | v2.1.0 |
-| Media Gallery (up to 10 images in a grid layout) | `MediaGalleryBuilder` | ✅ Supported | v2.1.0 |
-| File (inline attachment display) | `FileBuilder` | ✅ Supported | v2.1.0 |
+| Text Display (rich text block without an embed) | `TextDisplayBuilder` | ✅ Supported in discord.js v14.19.3; incompatible with embeds on the same message (Components v2 flag required) | v1.9.0 |
+| Section (side-by-side thumbnail + text accessory) | `SectionBuilder` | ✅ Supported | v1.9.0 |
+| Separator (visual divider between content blocks) | `SeparatorBuilder` | ✅ Supported | v1.9.0 |
+| Container (grouped content block with optional accent color) | `ContainerBuilder` | ✅ Supported | v1.9.0 |
+| Media Gallery (up to 10 images in a grid layout) | `MediaGalleryBuilder` | ✅ Supported | v1.9.0 |
+| File (inline attachment display) | `FileBuilder` | ✅ Supported | v1.9.0 |
 
 ### Features Not Feasible in n8n
 | Feature | Why Not Feasible |
@@ -91,7 +85,7 @@ This document compares the current node capabilities against the full Discord.js
 | ~~**v1.3.0**~~ | ~~Voice State Trigger~~ | ~~Trigger on users joining, leaving, or moving between voice channels~~ **✅ Shipped** |
 | ~~**v1.4.0**~~ | ~~Guild Scheduled Events~~ | ~~Create/edit/delete/list scheduled events; scheduled event triggers~~ **✅ Shipped** |
 | ~~**v1.5.0**~~ | ~~Channel & Role Management~~ | ~~Create/edit/delete channels and roles; create invites~~ **✅ Shipped** |
-| **v1.6.0** | Context Menu Commands | Register user/message context menu commands; context menu interaction trigger |
+| ~~**v1.6.0**~~ | ~~Context Menu Commands~~ | ~~Register user/message context menu commands; context menu interaction trigger~~ **✅ Shipped** |
 | **v1.7.0** | Bot Presence & Status | Set bot online status and activity (Playing/Watching/Listening/Streaming/Competing) |
-| **v2.0.0** | Message Polls | Send messages with native Discord polls; poll vote triggers |
-| **v2.1.0** | Components v2 Layout Blocks | TextDisplay, Section, Separator, Container, MediaGallery, File components |
+| **v1.8.0** | Message Polls | Send messages with native Discord polls; poll vote triggers |
+| **v1.9.0** | Components v2 Layout Blocks | TextDisplay, Section, Separator, Container, MediaGallery, File components |
