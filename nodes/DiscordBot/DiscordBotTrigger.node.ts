@@ -459,6 +459,7 @@ export class DiscordBotTrigger implements INodeType {
         name: 'pattern',
         type: 'options',
         options: [
+          { name: 'Bot Mentioned or Replied To', value: 'bot-mentioned', description: 'Fires when the bot is @mentioned directly or when someone replies to a bot message' },
           { name: 'Contains', value: 'contains' },
           { name: 'Ends With', value: 'ends-with' },
           { name: 'Equals', value: 'equals' },
@@ -789,14 +790,48 @@ export class DiscordBotTrigger implements INodeType {
               return;
             }
 
-            const messageContent = typeof message.content === 'string' ? message.content : '';
-            if (!matchPattern(messageContent, pattern, patternValue, caseSensitive)) {
-              console.log(`[DiscordBotTrigger:messageCreate] filtered: pattern mismatch pattern=${pattern}`);
-              return;
+            if (pattern === 'bot-mentioned') {
+              const botId = client.user?.id;
+              // Direct @mention in message content
+              const botMentioned = botId != null && message.mentions.users.has(botId);
+              // Reply to a bot message (with or without the @mention tick)
+              const botRepliedTo = message.reference != null && message.mentions.repliedUser?.id === botId;
+              if (!botMentioned && !botRepliedTo) {
+                console.log('[DiscordBotTrigger:messageCreate] filtered: bot not mentioned or replied to');
+                return;
+              }
+            } else {
+              const messageContent = typeof message.content === 'string' ? message.content : '';
+              if (!matchPattern(messageContent, pattern, patternValue, caseSensitive)) {
+                console.log(`[DiscordBotTrigger:messageCreate] filtered: pattern mismatch pattern=${pattern}`);
+                return;
+              }
+            }
+
+            // If this message is a reply, fetch the referenced message and include it in the payload.
+            let referencedMessage: Record<string, unknown> | null = null;
+            if (message.reference) {
+              try {
+                const ref = await message.fetchReference();
+                referencedMessage = {
+                  messageId: ref.id,
+                  channelId: ref.channelId,
+                  content: ref.content,
+                  authorId: ref.author.id,
+                  authorName: ref.author.username,
+                  createdTimestamp: ref.createdTimestamp,
+                };
+              } catch {
+                // Message may have been deleted; return what we know from the reference stub.
+                referencedMessage = {
+                  messageId: message.reference.messageId ?? null,
+                  channelId: message.reference.channelId,
+                };
+              }
             }
 
             console.log('[DiscordBotTrigger:messageCreate] emitting event');
-            this.emit([this.helpers.returnJsonArray(buildMessagePayload(message))]);
+            this.emit([this.helpers.returnJsonArray({ ...buildMessagePayload(message), referencedMessage })]);
           } catch (error) {
             logNonCriticalError('Unhandled error in messageCreate handler', error, {
               event,

@@ -37,8 +37,9 @@ npm install n8n-nodes-discord-bots
 1. Create an app in the [Discord Developer Portal](https://discord.com/developers/applications).
 2. Add a bot user under **Bot**.
 3. Enable the following **Privileged Gateway Intents**:
-   - **Message Content Intent** â€” required to read message body text
-   - **Server Members Intent** â€” required only when using role filters
+   - **Message Content Intent** — required to read message body text
+   - **Server Members Intent** — required to use role filters and the Fetch Member action
+   - **Presence Intent** — required for `status` and `clientStatus` fields on the Fetch Member action
 4. Invite the bot to your server using OAuth2 with scopes:
    - `bot`
    - `applications.commands`
@@ -66,6 +67,13 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | Slash Command | Triggered when a user invokes a registered slash command |
 | Component Interaction | Triggered when a user clicks a button or uses a select menu |
 | Modal Submit | Triggered when a user submits a modal form |
+| Member Joined | Triggered when a user joins the guild |
+| Member Left | Triggered when a user leaves or is removed from the guild |
+| Member Updated | Triggered when a guild member's roles, nickname, or other properties change |
+| Ban Added | Triggered when a user is banned from the guild |
+| Ban Removed | Triggered when a user's ban is lifted |
+| Message Edited | Triggered when a message is edited |
+| Message Deleted | Triggered when a message is deleted |
 | Thread Created | Triggered when a new thread is created in a guild channel |
 | Thread Updated | Triggered when a thread is edited (name, archived state, locked state, etc.) |
 | Thread Deleted | Triggered when a thread is deleted |
@@ -73,6 +81,56 @@ Listen for Discord events and starts an n8n workflow when they occur.
 | Scheduled Event Created | Triggered when a new guild scheduled event is created |
 | Scheduled Event Updated | Triggered when a guild scheduled event is modified (name, status, time, etc.) |
 | Scheduled Event Deleted | Triggered when a guild scheduled event is deleted |
+
+---
+
+### New Channel Message & New Direct Message Triggers
+
+**Filters available on both triggers:**
+
+| Filter | Description |
+|--------|-------------|
+| Guild | Restrict to one or more guilds (channel messages only) |
+| Channel | Restrict to one or more channels or parent categories (channel messages only) |
+| Role | Only fire for messages from members holding at least one of the selected roles |
+| Pattern | Content-matching rule (see below) |
+| Case Sensitive | Whether the pattern match is case-sensitive (default: off) |
+| Trigger on Bot Messages | Whether to also fire for messages from other bots (default: off) |
+
+**Pattern options:**
+
+| Pattern | Description |
+|---------|-------------|
+| Every Message | Fire for every message regardless of content (default) |
+| Bot Mentioned or Replied To | Fire when the bot is `@mentioned` directly **or** when the message is a reply to one of the bot's messages |
+| Contains | Fire when the message contains the specified value |
+| Equals | Fire when the message content exactly matches the value |
+| Starts With | Fire when the message content starts with the value |
+| Ends With | Fire when the message content ends with the value |
+| Regex | Fire when the message content matches the regular expression |
+
+**Output fields:**
+
+| Field | Description |
+|-------|-------------|
+| type | `channel-message` or `direct-message` |
+| messageId | Snowflake ID of the message |
+| content | Text content of the message |
+| guildId | Guild ID, or `null` for DMs |
+| channelId | Channel ID where the message was posted |
+| userId | Discord ID of the message author |
+| userDisplayName | Display name (server nickname › global name › username) |
+| userGlobalName | Global display name, or `null` |
+| userName | Username (the unique handle) |
+| userTag | Discord tag (e.g. `User#0000`) |
+| userAvatarUrl | URL of the author's avatar |
+| memberDisplayName | Server-specific display name, or `null` for DMs |
+| memberNickname | Server nickname, or `null` |
+| memberRoleIds | Array of role IDs held by the member (excludes `@everyone`) |
+| authorIsBot | Whether the author is a bot |
+| createdTimestamp | Unix timestamp (ms) of the message |
+| attachments | Array of attachment objects: `{ id, name, contentType, size, url }` |
+| referencedMessage | If the message is a reply: `{ messageId, channelId, content, authorId, authorName, createdTimestamp }`. `null` if not a reply. If the original message was deleted: `{ messageId, channelId }`. |
 
 ---
 
@@ -625,6 +683,10 @@ Fetches all scheduled events in a guild.
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text in channel and DM events.
 
 ## Milestone Versions
+- **v1.5.4**: Reply features — New **Bot Mentioned or Replied To** pattern fires when the bot is `@mentioned` or when a user replies to any of the bot's messages. All channel/DM message trigger events now include a `referencedMessage` field with the content and author of the original message when a reply is detected.
+- **v1.5.3**: Fetch Member enhancements — action now returns `globalName`, `accountCreatedAt`, `serverAvatarUrl`, `isBoosting`, `boostingSince`, `userFlags`, `pending`, `status`, and `clientStatus`; added `GuildPresences` privileged intent for live presence data.
+- **v1.5.2**: AI Tool support — Discord Bot node is exposed as an n8n AI Agent tool.
+- **v1.5.0**: Channel & Role Management — 7 new operations: Create Channel, Edit Channel, Delete Channel, Create Invite, Create Role, Edit Role, Delete Role.
 - **v1.4.0**: Guild Scheduled Events — 4 new operations (Create, Edit, Delete, List Scheduled Events) and 3 new triggers (Scheduled Event Created/Updated/Deleted); requires `GuildScheduledEvents` intent; supports Voice Channel, Stage Channel, and External Location entity types.
 - **v1.3.0**: Voice State Trigger — triggers on users joining, leaving, moving between, or changing state in voice channels; emits subtype (join/leave/move/update), channel info, and full mute/deafen/stream/video state.
 - **v1.2.0**: Thread Management — Create threads from messages or standalone; edit threads (archive, lock, rename, auto-archive duration); add/remove thread members; new triggers: Thread Created, Thread Updated, Thread Deleted.
