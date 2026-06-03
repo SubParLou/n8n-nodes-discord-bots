@@ -71,7 +71,9 @@ type Operation =
   | 'create-invite'
   | 'create-role'
   | 'edit-role'
-  | 'delete-role';
+  | 'delete-role'
+  | 'set-bot-status'
+  | 'set-bot-activity';
 
 function parseJsonField<T>(value: string, fieldName: string, context: IExecuteFunctions): T {
   if (!value) {
@@ -158,6 +160,8 @@ export class DiscordBot implements INodeType {
           { name: 'Respond to Interaction', value: 'respond-to-interaction' },
           { name: 'Send Message', value: 'send-message' },
           { name: 'Send Modal', value: 'send-modal' },
+          { name: 'Set Bot Activity', value: 'set-bot-activity' },
+          { name: 'Set Bot Status', value: 'set-bot-status' },
           { name: 'Set Member Nickname', value: 'set-nickname' },
           { name: 'Timeout Member', value: 'timeout-member' },
           { name: 'Unban Member', value: 'unban-member' },
@@ -2764,6 +2768,66 @@ export class DiscordBot implements INodeType {
         default: '',
         description: 'Reason recorded in the guild audit log',
       },
+
+      // ─── Bot Presence & Activity Fields ────────────────────────────────────
+      {
+        displayName: 'Status',
+        name: 'botPresenceStatus',
+        type: 'options',
+        displayOptions: {
+          show: { operation: ['set-bot-status'] },
+        },
+        default: 'online',
+        options: [
+          { name: 'Do Not Disturb', value: 'dnd' },
+          { name: 'Idle', value: 'idle' },
+          { name: 'Invisible', value: 'invisible' },
+          { name: 'Online', value: 'online' },
+        ],
+        description: 'Bot online status shown in Discord',
+      },
+      {
+        displayName: 'Activity Name',
+        name: 'botActivityName',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['set-bot-activity'] },
+        },
+        default: '',
+        required: true,
+        description: 'Text shown after the selected activity type, for example "with n8n"',
+      },
+      {
+        displayName: 'Activity Type',
+        name: 'botActivityType',
+        type: 'options',
+        displayOptions: {
+          show: { operation: ['set-bot-activity'] },
+        },
+        default: 0,
+        options: [
+          { name: 'Competing', value: 5 },
+          { name: 'Listening', value: 2 },
+          { name: 'Playing', value: 0 },
+          { name: 'Streaming', value: 1 },
+          { name: 'Watching', value: 3 },
+        ],
+        description: 'How the activity is displayed in Discord',
+      },
+      {
+        displayName: 'Streaming URL',
+        name: 'botActivityUrl',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['set-bot-activity'],
+            botActivityType: [1],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'Required when Activity Type is Streaming (for example https://twitch.tv/yourchannel)',
+      },
     ],
   };
 
@@ -4106,6 +4170,66 @@ export class DiscordBot implements INodeType {
         const guild = await client.guilds.fetch(guildId);
         await guild.roles.delete(roleId, reason || undefined);
         returnData.push({ json: { operation, guildId, roleId, deleted: true }, pairedItem: { item: i } });
+        continue;
+      }
+
+      // ─── Bot Presence & Activity Operations ────────────────────────────────
+
+      if (operation === 'set-bot-status') {
+        const client = await getClient(credentials);
+        const status = this.getNodeParameter('botPresenceStatus', i) as 'online' | 'idle' | 'dnd' | 'invisible';
+
+        if (!client.user) {
+          throw new NodeOperationError(this.getNode(), 'Bot user is not available on the active client');
+        }
+
+        client.user.setPresence({ status });
+
+        returnData.push({
+          json: {
+            operation,
+            status,
+            botUserId: client.user.id,
+            botTag: client.user.tag,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'set-bot-activity') {
+        const client = await getClient(credentials);
+        const name = this.getNodeParameter('botActivityName', i) as string;
+        const type = this.getNodeParameter('botActivityType', i, 0) as number;
+        const url = this.getNodeParameter('botActivityUrl', i, '') as string;
+
+        if (!client.user) {
+          throw new NodeOperationError(this.getNode(), 'Bot user is not available on the active client');
+        }
+
+        const activityOptions: Record<string, unknown> = { type };
+        if (type === 1) {
+          if (!url) {
+            throw new NodeOperationError(this.getNode(), 'Streaming URL is required when Activity Type is Streaming');
+          }
+          activityOptions.url = url;
+        }
+
+        client.user.setActivity(name, activityOptions as any);
+
+        returnData.push({
+          json: {
+            operation,
+            activity: {
+              name,
+              type,
+              url: type === 1 ? url : null,
+            },
+            botUserId: client.user.id,
+            botTag: client.user.tag,
+          },
+          pairedItem: { item: i },
+        });
         continue;
       }
 
