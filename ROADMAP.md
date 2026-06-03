@@ -20,6 +20,7 @@ This document compares the current node capabilities against the full Discord.js
 | Triggers: Guild Scheduled Event created/updated/deleted | ✅ v1.4.0 |
 | Actions: create/edit/delete/list guild scheduled events | ✅ v1.4.0 |
 | Actions: register context menu commands (user & message types); Context Menu Command trigger | ✅ v1.6.0 |
+| Actions: set bot status and activity (Playing/Watching/Listening/Streaming/Competing) | ✅ v1.7.0 |
 | Message components: embeds, buttons (all 5 styles), string select menus, auto-populated select menus (user/role/mentionable/channel) | ✅ |
 | Message payload modes: visual builder, raw JSON, builder + JSON merge | ✅ |
 
@@ -31,24 +32,6 @@ This document compares the current node capabilities against the full Discord.js
 | Feature | discord.js event | n8n Feasibility | Milestone |
 |---------|-----------------|-----------------|-----------|
 | Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v1.8.0 |
-
-
-### New Operations — Channel & Role Management
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Create Channel | `guild.channels.create(options)` | ✅ Standard admin operation | v1.5.0 |
-| Edit Channel | `channel.edit(options)` | ✅ Standard admin operation | v1.5.0 |
-| Delete Channel | `channel.delete()` | ✅ Standard admin operation | v1.5.0 |
-| Create Invite | `channel.createInvite(options)` | ✅ Returns invite URL to workflow | v1.5.0 |
-| Create Role | `guild.roles.create(options)` | ✅ Standard admin operation | v1.5.0 |
-| Edit Role | `role.edit(options)` | ✅ Standard admin operation | v1.5.0 |
-| Delete Role | `role.delete()` | ✅ Standard admin operation | v1.5.0 |
-
-### New Operations — Bot Presence & Status
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Set Bot Status (online / idle / dnd / invisible) | `client.user.setPresence({ status })` | ✅ Simple single call | v1.7.0 |
-| Set Bot Activity (Playing / Watching / Listening / Streaming / Competing) | `client.user.setActivity(options)` | ✅ Simple single call; Streaming requires a URL | v1.7.0 |
 
 ### New Message Features — Polls
 | Feature | discord.js API | n8n Feasibility | Milestone |
@@ -80,12 +63,5 @@ This document compares the current node capabilities against the full Discord.js
 
 | Milestone | Title | Key Features |
 |-----------|-------|-------------|
-| ~~**v1.1.4**~~ | ~~High-Priority Operations & Triggers~~ | ~~Message management (delete, fetch, history, reactions, pin/unpin, bulk delete); Send Modal; Member management (roles, kick, ban, timeout, nickname); Triggers: member join/leave/update, message edit/delete, ban add/remove~~ **✅ Shipped** |
-| ~~**v1.2.0**~~ | ~~Thread Management~~ | ~~Create, edit, delete threads; add/remove thread members; thread event triggers~~ **✅ Shipped** |
-| ~~**v1.3.0**~~ | ~~Voice State Trigger~~ | ~~Trigger on users joining, leaving, or moving between voice channels~~ **✅ Shipped** |
-| ~~**v1.4.0**~~ | ~~Guild Scheduled Events~~ | ~~Create/edit/delete/list scheduled events; scheduled event triggers~~ **✅ Shipped** |
-| ~~**v1.5.0**~~ | ~~Channel & Role Management~~ | ~~Create/edit/delete channels and roles; create invites~~ **✅ Shipped** |
-| ~~**v1.6.0**~~ | ~~Context Menu Commands~~ | ~~Register user/message context menu commands; context menu interaction trigger~~ **✅ Shipped** |
-| **v1.7.0** | Bot Presence & Status | Set bot online status and activity (Playing/Watching/Listening/Streaming/Competing) |
 | **v1.8.0** | Message Polls | Send messages with native Discord polls; poll vote triggers |
 | **v1.9.0** | Components v2 Layout Blocks | TextDisplay, Section, Separator, Container, MediaGallery, File components |

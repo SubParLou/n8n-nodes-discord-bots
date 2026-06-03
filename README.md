@@ -58,6 +58,7 @@ npm install n8n-nodes-discord-bots
 | [Thread Management](docs/thread-management.md) | Create, edit, and manage threads; triggers for thread creation, updates, and deletion |
 | [Voice State](docs/voice-state.md) | Trigger on users joining, leaving, moving between, or changing state in voice channels |
 | [Scheduled Events](docs/scheduled-events.md) | Create, edit, delete, and list guild scheduled events; triggers for event lifecycle |
+| [Bot Presence & Status](docs/bot-presence-status.md) | Set bot online status and activity text (Playing/Watching/Listening/Streaming/Competing) |
 | [Workflow Patterns](docs/workflow-patterns.md) | Common workflow patterns and example setups |
 
 ---
@@ -75,6 +76,7 @@ npm install n8n-nodes-discord-bots
 
 | Version | Highlights |
 |---|---|
+| **v1.7.0** | Bot Presence & Status - set bot online status and activity text |
 | **v1.6.1** | Docs restructure - slim README with feature-area sub-docs; encoding fixes |
 | **v1.6.0** | Context Menu Commands - register and trigger on right-click user/message commands |
 | **v1.5.4** | Reply features - Bot Mentioned or Replied To pattern; `referencedMessage` field on message events |
