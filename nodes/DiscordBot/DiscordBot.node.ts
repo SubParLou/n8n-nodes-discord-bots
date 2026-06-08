@@ -56,6 +56,7 @@ type Operation =
   | 'timeout-member'
   | 'unban-member'
   | 'unpin-message'
+  | 'send-message-with-poll'
   | 'add-thread-member'
   | 'create-thread'
   | 'create-thread-from-message'
@@ -159,6 +160,7 @@ export class DiscordBot implements INodeType {
           { name: 'Remove Thread Member', value: 'remove-thread-member' },
           { name: 'Respond to Interaction', value: 'respond-to-interaction' },
           { name: 'Send Message', value: 'send-message' },
+          { name: 'Send Message with Poll', value: 'send-message-with-poll' },
           { name: 'Send Modal', value: 'send-modal' },
           { name: 'Set Bot Activity', value: 'set-bot-activity' },
           { name: 'Set Bot Status', value: 'set-bot-status' },
@@ -175,7 +177,7 @@ export class DiscordBot implements INodeType {
         type: 'options',
         displayOptions: {
           show: {
-            operation: ['send-message'],
+            operation: ['send-message', 'send-message-with-poll'],
           },
         },
         default: 'channel',
@@ -193,7 +195,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message'],
+            operation: ['send-message', 'send-message-with-poll'],
             targetType: ['channel'],
           },
         },
@@ -211,7 +213,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message'],
+            operation: ['send-message', 'send-message-with-poll'],
             targetType: ['channel'],
           },
         },
@@ -224,7 +226,7 @@ export class DiscordBot implements INodeType {
         type: 'string',
         displayOptions: {
           show: {
-            operation: ['send-message'],
+            operation: ['send-message', 'send-message-with-poll'],
             targetType: ['user-dm'],
           },
         },
@@ -240,7 +242,12 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'respond-to-interaction', 'update-message'],
+            operation: [
+              'send-message',
+              'send-message-with-poll',
+              'respond-to-interaction',
+              'update-message',
+            ],
           },
         },
         default: '',
@@ -291,6 +298,79 @@ export class DiscordBot implements INodeType {
         required: true,
         description: 'The ID of the message to edit',
       },
+      // ─── Poll Fields ───────────────────────────────────────────────────────
+      {
+        displayName: 'Poll Question',
+        name: 'pollQuestion',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['send-message-with-poll'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'The question of the poll',
+      },
+      {
+        displayName: 'Poll Answers',
+        name: 'pollAnswers',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message-with-poll'],
+          },
+        },
+        default: {},
+        options: [
+          {
+            name: 'answer',
+            displayName: 'Answer',
+            values: [
+              {
+                displayName: 'Text',
+                name: 'text',
+                type: 'string',
+                default: '',
+                required: true,
+              },
+              {
+                displayName: 'Emoji (Name or ID)',
+                name: 'emoji',
+                type: 'string',
+                default: '',
+                description: 'Optional emoji for the answer',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Poll Duration (Hours)',
+        name: 'pollDuration',
+        type: 'number',
+        displayOptions: {
+          show: {
+            operation: ['send-message-with-poll'],
+          },
+        },
+        default: 24,
+        description: 'How long the poll should last (1-744 hours)',
+      },
+      {
+        displayName: 'Allow Multiselect',
+        name: 'pollAllowMultiselect',
+        type: 'boolean',
+        displayOptions: {
+          show: {
+            operation: ['send-message-with-poll'],
+          },
+        },
+        default: false,
+      },
       // ─── Send Message Payload Mode ─────────────────────────────────────────
       {
         displayName: 'Message Payload Mode',
@@ -299,7 +379,7 @@ export class DiscordBot implements INodeType {
         noDataExpression: true,
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
           },
         },
         default: 'builder',
@@ -2888,7 +2968,7 @@ export class DiscordBot implements INodeType {
     for (let i = 0; i < items.length; i += 1) {
       const operation = this.getNodeParameter('operation', i) as Operation;
 
-      if (operation === 'send-message') {
+      if (operation === 'send-message' || operation === 'send-message-with-poll') {
         const client = await getClient(credentials);
         const targetType = this.getNodeParameter('targetType', i) as 'channel' | 'user-dm';
         const content = this.getNodeParameter('content', i, '') as string;
@@ -2939,8 +3019,31 @@ export class DiscordBot implements INodeType {
             components = [...components, ...extraComponents];
           }
         }
-        if (!content && !embeds.length && !components.length) {
-          throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components');
+
+        let poll: any = undefined;
+        if (operation === 'send-message-with-poll') {
+          const pollQuestion = this.getNodeParameter('pollQuestion', i) as string;
+          const pollAnswers = this.getNodeParameter('pollAnswers', i, { answer: [] }) as {
+            answer: Array<{ text: string; emoji?: string }>;
+          };
+          const pollDuration = this.getNodeParameter('pollDuration', i, 24) as number;
+          const pollAllowMultiselect = this.getNodeParameter('pollAllowMultiselect', i, false) as boolean;
+
+          poll = {
+            question: { text: pollQuestion },
+            answers: pollAnswers.answer.map((a) => ({
+              poll_media: {
+                text: a.text,
+                emoji: a.emoji ? (a.emoji.includes(':') ? { id: a.emoji.split(':').pop() } : { name: a.emoji }) : undefined,
+              },
+            })),
+            duration: pollDuration,
+            allow_multiselect: pollAllowMultiselect,
+          };
+        }
+
+        if (!content && !embeds.length && !components.length && !poll) {
+          throw new NodeOperationError(this.getNode(), 'Provide content, embeds, components, or a poll');
         }
 
         let channelId: string;
@@ -2952,9 +3055,10 @@ export class DiscordBot implements INodeType {
           if (!channel || !channel.isTextBased() || !('send' in channel)) {
             throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not text sendable`);
           }
-          const message = await channel.send({
+          const message = await (channel as any).send({
             content: content || undefined,
             embeds,
+            poll,
             components: components as any,
           });
           messageId = message.id;
@@ -2965,6 +3069,7 @@ export class DiscordBot implements INodeType {
           const message = await dm.send({
             content: content || undefined,
             embeds,
+            poll,
             components: components as any,
           });
           channelId = dm.id;

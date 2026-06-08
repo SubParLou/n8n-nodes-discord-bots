@@ -10,6 +10,7 @@ For responding to interactions (slash commands, buttons, context menus, modals),
 
 - [Send Message](#send-message)
 - [Update Message](#update-message)
+- [Send Message with Poll](#send-message-with-poll)
 - [Message Payload Modes](#message-payload-modes)
 - [Embed Builder](#embed-builder)
 - [Button Builder](#button-builder)
@@ -50,6 +51,29 @@ Edits an existing message previously sent by the bot.
 | Message Payload Mode | Same three modes as Send Message |
 
 All builder fields available in Send Message are also available here.
+
+**Output:** `{ operation, channelId, messageId, content }`
+
+[^ Top](#messaging-operations)
+
+---
+
+## Send Message with Poll
+
+Sends a message containing a native Discord poll. Note: You must enable the `Message Content` intent and `Guild Message Polls` intent in the Discord Developer Portal.
+
+| Parameter | Description |
+|-----------|-------------|
+| Target Type | `Channel` or `User DM` |
+| Guild | Used to load available channels |
+| Channel | Target text channel (channel target only) |
+| User ID | Target user's Discord ID (DM target only) |
+| Poll Question | The main question for the poll |
+| Poll Answers | A list of answers. Each answer requires `Text` and optional `Emoji`. |
+| Poll Duration | How long the poll should last (default: 24 hours, max 31 days) |
+| Allow Multiselect | Whether users can select more than one answer |
+
+Polls also support `Content`, `Embeds`, and `Components` which will be displayed alongside the poll.
 
 **Output:** `{ operation, channelId, messageId, content }`
 

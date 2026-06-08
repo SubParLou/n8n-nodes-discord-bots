@@ -44,7 +44,9 @@ type TriggerType =
   | 'voice-state-update'
   | 'scheduled-event-create'
   | 'scheduled-event-update'
-  | 'scheduled-event-delete';
+  | 'scheduled-event-delete'
+  | 'poll-vote-add'
+  | 'poll-vote-remove';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -408,6 +410,8 @@ export class DiscordBotTrigger implements INodeType {
           { name: 'Modal Submit', value: 'modal-submit' },
           { name: 'New Channel Message', value: 'channel-message' },
           { name: 'New Direct Message', value: 'direct-message' },
+          { name: 'Poll Vote Added', value: 'poll-vote-add' },
+          { name: 'Poll Vote Removed', value: 'poll-vote-remove' },
           { name: 'Reaction Added', value: 'reaction-add' },
           { name: 'Reaction Removed', value: 'reaction-remove' },
           { name: 'Scheduled Event Created', value: 'scheduled-event-create' },
@@ -430,7 +434,31 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'slash-command', 'component-interaction', 'context-menu-command', 'modal-submit', 'ban-add', 'ban-remove', 'member-join', 'member-leave', 'member-update', 'message-delete', 'message-edit', 'thread-create', 'thread-update', 'thread-delete', 'voice-state-update', 'scheduled-event-create', 'scheduled-event-update', 'scheduled-event-delete'],
+            event: [
+              'channel-message',
+              'reaction-add',
+              'reaction-remove',
+              'slash-command',
+              'component-interaction',
+              'context-menu-command',
+              'modal-submit',
+              'ban-add',
+              'ban-remove',
+              'member-join',
+              'member-leave',
+              'member-update',
+              'message-delete',
+              'message-edit',
+              'thread-create',
+              'thread-update',
+              'thread-delete',
+              'voice-state-update',
+              'scheduled-event-create',
+              'scheduled-event-update',
+              'scheduled-event-delete',
+              'poll-vote-add',
+              'poll-vote-remove',
+            ],
           },
         },
         default: [],
@@ -446,7 +474,15 @@ export class DiscordBotTrigger implements INodeType {
         },
         displayOptions: {
           show: {
-            event: ['channel-message', 'reaction-add', 'reaction-remove', 'message-edit', 'message-delete'],
+            event: [
+              'channel-message',
+              'reaction-add',
+              'reaction-remove',
+              'message-edit',
+              'message-delete',
+              'poll-vote-add',
+              'poll-vote-remove',
+            ],
           },
         },
         default: [],
@@ -1504,6 +1540,40 @@ export class DiscordBotTrigger implements INodeType {
               scheduledStartTime: scheduledEvent.scheduledStartAt,
               scheduledEndTime: scheduledEvent.scheduledEndAt,
               location: scheduledEvent.entityMetadata?.location ?? null,
+            }),
+          ]);
+        }),
+      );
+    }
+
+    if (event === 'poll-vote-add' || event === 'poll-vote-remove') {
+      const pollEvent = event === 'poll-vote-add' ? 'messagePollVoteAdd' : 'messagePollVoteRemove';
+      removeListeners.push(
+        addClientListener(client, pollEvent, async (answer, userId) => {
+          const message = answer.poll.message;
+          const guildId = message.guildId;
+          const channelId = message.channelId;
+
+          if (guildIds.length > 0 && (!guildId || !guildIds.includes(guildId))) {
+            return;
+          }
+          if (channelIds.length > 0 && !channelIds.includes(channelId)) {
+            return;
+          }
+
+          const user = await client.users.fetch(userId);
+          this.emit([
+            this.helpers.returnJsonArray({
+              type: event,
+              userId,
+              username: user.username,
+              userGlobalName: user.globalName ?? null,
+              guildId,
+              channelId,
+              messageId: message.id,
+              answerId: answer.id,
+              answerText: answer.text,
+              pollQuestion: answer.poll.question.text,
             }),
           ]);
         }),

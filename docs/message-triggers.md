@@ -8,6 +8,7 @@ Triggers on new messages in guild channels or direct messages sent to the bot.
 
 - [New Channel Message](#new-channel-message)
 - [New Direct Message](#new-direct-message)
+- [Poll Vote Added / Removed](#poll-vote-added--removed)
 - [Filters](#filters)
 - [Pattern Options](#pattern-options)
 - [Output Fields](#output-fields)
@@ -29,6 +30,28 @@ Fires when a message is posted in a guild text channel the bot can see.
 Fires when a user sends a direct message to the bot.
 
 **Available filters:** Pattern, Case Sensitive, Trigger on Bot Messages
+
+[^ Top](#message-triggers)
+
+---
+
+## Poll Vote Added / Removed
+
+Fires when a user adds or removes a vote from a poll.
+
+**Available filters:** Guild, Channel
+
+**Output Fields (specific to polls):**
+- `type`: `poll-vote-add` or `poll-vote-remove`
+- `userId`: ID of the user who voted
+- `username`: Username of the user
+- `userGlobalName`: Global display name of the user
+- `guildId`: ID of the guild
+- `channelId`: ID of the channel
+- `messageId`: ID of the message containing the poll
+- `answerId`: ID of the answer chosen
+- `answerText`: Text of the answer chosen
+- `pollQuestion`: The question of the poll
 
 [^ Top](#message-triggers)
 
