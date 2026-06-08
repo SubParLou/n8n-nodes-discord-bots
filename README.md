@@ -27,16 +27,18 @@ npm install n8n-nodes-discord-bots
 
 1. Create an app in the [Discord Developer Portal](https://discord.com/developers/applications).
 2. Add a bot user under **Bot**.
-3. Enable the following **Privileged Gateway Intents**:
-   - **Message Content Intent** - required to read message body text
-   - **Server Members Intent** - required to use role filters and the Fetch Member action
-   - **Presence Intent** - required for `status` and `clientStatus` fields on the Fetch Member action
+3. Enable the following **Gateway Intents**:
+   - **Message Content Intent** (Privileged) - required to read message body text
+   - **Server Members Intent** (Privileged) - required to use role filters and the Fetch Member action
+   - **Presence Intent** (Privileged) - required for `status` and `clientStatus` fields on the Fetch Member action
+   - **Guild Message Polls** - required for poll vote triggers
 4. Invite the bot to your server using OAuth2 with scopes:
    - `bot`
    - `applications.commands`
 5. Grant the bot the required permissions:
    - **Read Messages / View Channels**
    - **Send Messages**
+   - **Send Polls** (if using poll operations)
    - **Read Message History**
    - **Add Reactions** (if using reaction events)
 6. Create **Discord Bot API** credentials in n8n:
@@ -49,10 +51,10 @@ npm install n8n-nodes-discord-bots
 
 | Feature Area | Description |
 |---|---|
-| [Message Triggers](docs/message-triggers.md) | Trigger on new channel messages or DMs, with filters for guild, channel, role, and content pattern |
+| [Message Triggers](docs/message-triggers.md) | Trigger on new channel messages, DMs, or poll votes |
 | [Interaction Triggers](docs/interaction-triggers.md) | Trigger on slash commands, button/select interactions, context menu commands, and modal submissions |
 | [Member & Message Event Triggers](docs/member-triggers.md) | Trigger on member join/leave/update, bans, and message edits/deletes |
-| [Messaging Operations](docs/messaging-operations.md) | Send and update messages with a visual builder or raw JSON - supports embeds, buttons, and select menus |
+| [Messaging Operations](docs/messaging-operations.md) | Send and update messages with a visual builder or raw JSON - supports embeds, buttons, select menus, and polls |
 | [Command Registration](docs/command-registration.md) | Register slash commands and context menu (right-click) commands, guild-scoped or global |
 | [Interaction Responses](docs/interaction-responses.md) | Respond to slash commands, buttons, select menus, context menus, and modal submissions |
 | [Thread Management](docs/thread-management.md) | Create, edit, and manage threads; triggers for thread creation, updates, and deletion |
@@ -76,6 +78,7 @@ npm install n8n-nodes-discord-bots
 
 | Version | Highlights |
 |---|---|
+| **v1.8.0** | Message Polls - send native polls and trigger on poll votes |
 | **v1.7.0** | Bot Presence & Status - set bot online status and activity text |
 | **v1.6.1** | Docs restructure - slim README with feature-area sub-docs; encoding fixes |
 | **v1.6.0** | Context Menu Commands - register and trigger on right-click user/message commands |

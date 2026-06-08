@@ -21,6 +21,7 @@ This document compares the current node capabilities against the full Discord.js
 | Actions: create/edit/delete/list guild scheduled events | ✅ v1.4.0 |
 | Actions: register context menu commands (user & message types); Context Menu Command trigger | ✅ v1.6.0 |
 | Actions: set bot status and activity (Playing/Watching/Listening/Streaming/Competing) | ✅ v1.7.0 |
+| Actions: Send messages with native Discord polls; poll vote triggers | ✅ v1.8.0 |
 | Message components: embeds, buttons (all 5 styles), string select menus, auto-populated select menus (user/role/mentionable/channel) | ✅ |
 | Message payload modes: visual builder, raw JSON, builder + JSON merge | ✅ |
 
@@ -28,20 +29,10 @@ This document compares the current node capabilities against the full Discord.js
 
 ## What Discord.js v14 offers that is not yet covered
 
-### New Trigger Events
-| Feature | discord.js event | n8n Feasibility | Milestone |
+### New Message Components — Discord Layout Blocks (Components v2)
+| Feature | discord.js API | n8n Feasibility | Milestone |
 |---------|-----------------|-----------------|-----------|
-| Poll Vote Added / Poll Vote Removed | `messagePollVoteAdd/Remove` | ✅ Fully feasible — needs `GuildMessagePolls` intent | v1.8.0 |
-
-### New Message Features — Polls
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Send Message with a Poll | `message.poll` option in `channel.send()` | ✅ Fully supported in discord.js v14.19+; needs `GuildMessagePolls` intent | v1.8.0 |
-
-### New Message Components — Discord Components v2
-| Feature | discord.js API | n8n Feasibility | Milestone |
-|---------|---------------|-----------------|-----------|
-| Text Display (rich text block without an embed) | `TextDisplayBuilder` | ✅ Supported in discord.js v14.19.3; incompatible with embeds on the same message (Components v2 flag required) | v1.9.0 |
+| Text Display (rich text block without an embed) | `TextDisplayBuilder` | ✅ Supported in discord.js v14.19.3; Note: Cannot be mixed with embeds in the same message. | v1.9.0 |
 | Section (side-by-side thumbnail + text accessory) | `SectionBuilder` | ✅ Supported | v1.9.0 |
 | Separator (visual divider between content blocks) | `SeparatorBuilder` | ✅ Supported | v1.9.0 |
 | Container (grouped content block with optional accent color) | `ContainerBuilder` | ✅ Supported | v1.9.0 |
@@ -63,5 +54,4 @@ This document compares the current node capabilities against the full Discord.js
 
 | Milestone | Title | Key Features |
 |-----------|-------|-------------|
-| **v1.8.0** | Message Polls | Send messages with native Discord polls; poll vote triggers |
 | **v1.9.0** | Components v2 Layout Blocks | TextDisplay, Section, Separator, Container, MediaGallery, File components |
