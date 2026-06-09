@@ -22,6 +22,7 @@ import {
   registerSlashCommand,
 } from './clientManager';
 import type { DiscordBotCredentials } from './types';
+import { sendTelemetry } from './telemetry';
 import {
   buildAllComponentsFromUi,
   buildEmbedsFromUi,
@@ -2963,6 +2964,7 @@ export class DiscordBot implements INodeType {
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
     const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+    void sendTelemetry('n8n-nodes-discord-bots.discordBot', credentials.enableTelemetry);
     const returnData: INodeExecutionData[] = [];
 
     for (let i = 0; i < items.length; i += 1) {

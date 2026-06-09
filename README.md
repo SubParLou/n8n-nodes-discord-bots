@@ -74,6 +74,22 @@ npm install n8n-nodes-discord-bots
 
 ---
 
+## Telemetry
+
+This node includes a minimal telemetry feature to help me understand how many active installations and updates occur.
+
+### What is collected?
+- **Version**: The version of the node currently installed.
+- **Node Type**: Whether it's the regular node or the trigger node.
+- **Instance ID**: A persistent, anonymous unique identifier stored locally in your n8n configuration directory (`~/.n8n/n8n-nodes-discord-bots-telemetry.json`).
+
+### Privacy
+- **No private data** (credentials, message content, guild IDs, user IDs, etc.) is ever collected.
+- **Respects opt-out**: You can disable telemetry at any time in the **Discord Bot API** credential settings.
+- **Minimal impact**: Telemetry only pings the server once per version update. It does **not** ping every time a workflow runs.
+
+---
+
 ## Changelog
 
 | Version | Highlights |
