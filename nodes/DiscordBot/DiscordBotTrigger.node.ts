@@ -21,6 +21,7 @@ import {
   loadVoiceChannelOptions,
 } from './clientManager';
 import type { DiscordBotCredentials } from './types';
+import { sendTelemetry } from './telemetry';
 
 type TriggerType =
   | 'channel-message'
@@ -732,6 +733,7 @@ export class DiscordBotTrigger implements INodeType {
 
   async trigger(this: ITriggerFunctions): Promise<ITriggerResponse> {
     const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+    void sendTelemetry('n8n-nodes-discord-bots.discordBotTrigger', credentials.enableTelemetry);
     const client = await getClient(credentials);
 
     const event = this.getNodeParameter('event') as TriggerType;

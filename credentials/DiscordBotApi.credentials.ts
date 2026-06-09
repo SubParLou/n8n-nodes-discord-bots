@@ -30,6 +30,13 @@ export class DiscordBotApi implements ICredentialType {
       description: 'Discord bot token',
       required: true,
     },
+    {
+      displayName: 'Enable Telemetry',
+      name: 'enableTelemetry',
+      type: 'boolean',
+      default: true,
+      description: 'Send anonymous installation and update pings to help the developer track node usage and prioritize future development. No sensitive data is collected.',
+    },
   ];
 
   authenticate: IAuthenticateGeneric = {
