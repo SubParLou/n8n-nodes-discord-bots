@@ -54,7 +54,7 @@ npm install n8n-nodes-discord-bots
 | [Message Triggers](docs/message-triggers.md) | Trigger on new channel messages, DMs, or poll votes |
 | [Interaction Triggers](docs/interaction-triggers.md) | Trigger on slash commands, button/select interactions, context menu commands, and modal submissions |
 | [Member & Message Event Triggers](docs/member-triggers.md) | Trigger on member join/leave/update, bans, and message edits/deletes |
-| [Messaging Operations](docs/messaging-operations.md) | Send and update messages with a visual builder or raw JSON - supports embeds, buttons, select menus, and polls |
+| [Messaging Operations](docs/messaging-operations.md) | Send and update messages with a visual builder or raw JSON - supports embeds, buttons, select menus, polls, and Discord Components v2 layout blocks |
 | [Command Registration](docs/command-registration.md) | Register slash commands and context menu (right-click) commands, guild-scoped or global |
 | [Interaction Responses](docs/interaction-responses.md) | Respond to slash commands, buttons, select menus, context menus, and modal submissions |
 | [Thread Management](docs/thread-management.md) | Create, edit, and manage threads; triggers for thread creation, updates, and deletion |
@@ -69,6 +69,7 @@ npm install n8n-nodes-discord-bots
 
 - One Discord WebSocket connection is maintained per unique bot token. All n8n workflows sharing the same credentials reuse that single connection. To run a second independent bot, create a second Discord application with its own token.
 - Discord interaction responses must be sent within 3 seconds of receipt. Enable **Auto Acknowledge Interactions** on the trigger so the workflow has up to 15 minutes to respond via **Respond to Interaction**.
+- Embeds and Discord Components v2 layout blocks cannot be mixed in the same message or interaction response; the node will reject mixed payloads with a clear validation error.
 - Guild-scoped slash commands register instantly. Global commands can take up to 1 hour to appear in Discord.
 - The **Message Content Intent** must be enabled in the Discord Developer Portal for the bot to receive message text.
 
@@ -85,7 +86,7 @@ This node includes a minimal telemetry feature to help me understand how many ac
 
 ### Privacy
 - **No private data** (credentials, message content, guild IDs, user IDs, etc.) is ever collected.
-- **Respects opt-out**: You can disable telemetry at any time in the **Discord Bot API** credential settings.
+- **Enabled by default**: Telemetry is opt-out and is enabled unless the user explicitly disables it in the **Discord Bot API** credential settings.
 - **Minimal impact**: Telemetry only pings the server once per version update. It does **not** ping every time a workflow runs.
 
 ---

@@ -4,10 +4,12 @@ import {
   type ApplicationCommandOptionData,
   type APIEmbed,
   type APIActionRowComponent,
+  type APIMessageTopLevelComponent,
 } from 'discord.js';
 import type {
   IExecuteFunctions,
   ILoadOptionsFunctions,
+  INode,
   INodeExecutionData,
   INodePropertyOptions,
   INodeType,
@@ -29,9 +31,15 @@ import {
   buildModalFromUi,
   type AutoSelectMenuUiParams,
   type ButtonUiParams,
+  type ContainerUiParams,
   type EmbedUiParams,
+  type FileUiParams,
+  type MediaGalleryUiParams,
   type ModalUiParams,
+  type SectionUiParams,
+  type SeparatorUiParams,
   type StringSelectMenuUiParams,
+  type TextDisplayUiParams,
 } from './messageBuilder';
 
 type Operation =
@@ -418,7 +426,7 @@ export class DiscordBot implements INodeType {
         },
         default: {},
         placeholder: 'Add Embed',
-        description: 'Up to 10 embeds per message. Empty fields are omitted.',
+        description: 'Up to 10 embeds per message. Empty fields are omitted. Cannot be used with Discord Components v2 layout blocks in the same message.',
         options: [
           {
             displayName: 'Embed',
@@ -876,6 +884,259 @@ export class DiscordBot implements INodeType {
           },
         ],
       },
+      {
+        displayName: 'Text Displays',
+        name: 'textDisplayBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Text Display',
+        description: 'Top-level text display blocks for rich text content. Cannot be used with embeds in the same message.',
+        options: [
+          {
+            displayName: 'Text Display',
+            name: 'display',
+            values: [
+              {
+                displayName: 'Content',
+                name: 'content',
+                type: 'string',
+                default: '',
+                description: 'Markdown-formatted content displayed as a top-level text block',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Sections',
+        name: 'sectionBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Section',
+        description: 'Top-level section blocks with title, content, and optional thumbnail. Cannot be used with embeds in the same message.',
+        options: [
+          {
+            displayName: 'Section',
+            name: 'section',
+            values: [
+              {
+                displayName: 'Title',
+                name: 'title',
+                type: 'string',
+                default: '',
+                description: 'Section title text',
+              },
+              {
+                displayName: 'Content',
+                name: 'content',
+                type: 'string',
+                default: '',
+                description: 'Section body text',
+              },
+              {
+                displayName: 'Thumbnail URL',
+                name: 'thumbnailUrl',
+                type: 'string',
+                default: '',
+                description: 'Optional thumbnail image URL for the section accessory',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Separators',
+        name: 'separatorBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Separator',
+        description: 'Top-level separators for message layout. Cannot be used with embeds in the same message.',
+        options: [
+          {
+            displayName: 'Separator',
+            name: 'separator',
+            values: [
+              {
+                displayName: 'Type',
+                name: 'type',
+                type: 'options',
+                options: [
+                  { name: 'Horizontal', value: 'horizontal' },
+                  { name: 'Emoji', value: 'emoji' },
+                ],
+                default: 'horizontal',
+              },
+              {
+                displayName: 'Emoji',
+                name: 'emoji',
+                type: 'string',
+                default: '',
+                description: 'Emoji shown for emoji separators',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Containers',
+        name: 'containerBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Container',
+        description: 'Top-level container blocks with optional accent color. Cannot be used with embeds in the same message.',
+        options: [
+          {
+            displayName: 'Container',
+            name: 'container',
+            values: [
+              {
+                displayName: 'Title',
+                name: 'title',
+                type: 'string',
+                default: '',
+                description: 'Container title text',
+              },
+              {
+                displayName: 'Content',
+                name: 'content',
+                type: 'string',
+                default: '',
+                description: 'Container body text',
+              },
+              {
+                displayName: 'Accent Color',
+                name: 'accentColor',
+                type: 'color',
+                default: '',
+                description: 'Accent color for the container border',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Media Galleries',
+        name: 'mediaGalleryBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Media Gallery',
+        description: 'Top-level gallery blocks with up to 10 images. Cannot be used with embeds in the same message.',
+        options: [
+          {
+            displayName: 'Gallery',
+            name: 'gallery',
+            values: [
+              {
+                displayName: 'Image URLs',
+                name: 'images',
+                type: 'fixedCollection',
+                typeOptions: { multipleValues: true },
+                default: {},
+                placeholder: 'Add Image',
+                options: [
+                  {
+                    displayName: 'Image',
+                    name: 'image',
+                    values: [
+                      {
+                        displayName: 'Image URL',
+                        name: 'url',
+                        type: 'string',
+                        default: '',
+                        description: 'URL of the image to include in the gallery',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Files',
+        name: 'fileBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            payloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add File',
+        description: 'Top-level file components representing an attachment. Cannot be used with embeds in the same message.',
+        options: [
+          {
+            displayName: 'File',
+            name: 'file',
+            values: [
+              {
+                displayName: 'File URL',
+                name: 'fileUrl',
+                type: 'string',
+                default: '',
+                description: 'Attachment URL for the file component',
+              },
+              {
+                displayName: 'File Name',
+                name: 'fileName',
+                type: 'string',
+                default: '',
+                description: 'Optional display name for the attachment',
+              },
+            ],
+          },
+        ],
+      },
       // ─── Respond to Interaction Payload Mode ───────────────────────────────
       {
         displayName: 'Message Payload Mode',
@@ -912,7 +1173,7 @@ export class DiscordBot implements INodeType {
         type: 'json',
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message'],
             payloadMode: ['raw-json', 'builder-merge'],
           },
         },
@@ -1427,6 +1688,259 @@ export class DiscordBot implements INodeType {
                 ],
                 default: 5,
                 description: 'The type of Discord auto-populated select menu',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Text Displays',
+        name: 'replyTextDisplayBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Text Display',
+        description: 'Top-level text display blocks for rich text content. Cannot be used with embeds in the same response.',
+        options: [
+          {
+            displayName: 'Text Display',
+            name: 'display',
+            values: [
+              {
+                displayName: 'Content',
+                name: 'content',
+                type: 'string',
+                default: '',
+                description: 'Markdown-formatted content displayed as a top-level text block',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Sections',
+        name: 'replySectionBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Section',
+        description: 'Top-level section blocks with title, content, and optional thumbnail. Cannot be used with embeds in the same response.',
+        options: [
+          {
+            displayName: 'Section',
+            name: 'section',
+            values: [
+              {
+                displayName: 'Title',
+                name: 'title',
+                type: 'string',
+                default: '',
+                description: 'Section title text',
+              },
+              {
+                displayName: 'Content',
+                name: 'content',
+                type: 'string',
+                default: '',
+                description: 'Section body text',
+              },
+              {
+                displayName: 'Thumbnail URL',
+                name: 'thumbnailUrl',
+                type: 'string',
+                default: '',
+                description: 'Optional thumbnail image URL for the section accessory',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Separators',
+        name: 'replySeparatorBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Separator',
+        description: 'Top-level separators for message layout. Cannot be used with embeds in the same response.',
+        options: [
+          {
+            displayName: 'Separator',
+            name: 'separator',
+            values: [
+              {
+                displayName: 'Type',
+                name: 'type',
+                type: 'options',
+                options: [
+                  { name: 'Horizontal', value: 'horizontal' },
+                  { name: 'Emoji', value: 'emoji' },
+                ],
+                default: 'horizontal',
+              },
+              {
+                displayName: 'Emoji',
+                name: 'emoji',
+                type: 'string',
+                default: '',
+                description: 'Emoji shown for emoji separators',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Containers',
+        name: 'replyContainerBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Container',
+        description: 'Top-level container blocks with optional accent color. Cannot be used with embeds in the same response.',
+        options: [
+          {
+            displayName: 'Container',
+            name: 'container',
+            values: [
+              {
+                displayName: 'Title',
+                name: 'title',
+                type: 'string',
+                default: '',
+                description: 'Container title text',
+              },
+              {
+                displayName: 'Content',
+                name: 'content',
+                type: 'string',
+                default: '',
+                description: 'Container body text',
+              },
+              {
+                displayName: 'Accent Color',
+                name: 'accentColor',
+                type: 'color',
+                default: '',
+                description: 'Accent color for the container border',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Media Galleries',
+        name: 'replyMediaGalleryBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add Media Gallery',
+        description: 'Top-level gallery blocks with up to 10 images. Cannot be used with embeds in the same response.',
+        options: [
+          {
+            displayName: 'Gallery',
+            name: 'gallery',
+            values: [
+              {
+                displayName: 'Image URLs',
+                name: 'images',
+                type: 'fixedCollection',
+                typeOptions: { multipleValues: true },
+                default: {},
+                placeholder: 'Add Image',
+                options: [
+                  {
+                    displayName: 'Image',
+                    name: 'image',
+                    values: [
+                      {
+                        displayName: 'Image URL',
+                        name: 'url',
+                        type: 'string',
+                        default: '',
+                        description: 'URL of the image to include in the gallery',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        displayName: 'Files',
+        name: 'replyFileBuilder',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        displayOptions: {
+          show: {
+            operation: ['respond-to-interaction'],
+            replyPayloadMode: ['builder', 'builder-merge'],
+          },
+        },
+        default: {},
+        placeholder: 'Add File',
+        description: 'Top-level file components representing an attachment. Cannot be used with embeds in the same response.',
+        options: [
+          {
+            displayName: 'File',
+            name: 'file',
+            values: [
+              {
+                displayName: 'File URL',
+                name: 'fileUrl',
+                type: 'string',
+                default: '',
+                description: 'Attachment URL for the file component',
+              },
+              {
+                displayName: 'File Name',
+                name: 'fileName',
+                type: 'string',
+                default: '',
+                description: 'Optional display name for the attachment',
               },
             ],
           },
@@ -2967,6 +3481,23 @@ export class DiscordBot implements INodeType {
     void sendTelemetry('n8n-nodes-discord-bots.discordBot', credentials.enableTelemetry);
     const returnData: INodeExecutionData[] = [];
 
+    const hasLayoutBlocks = (components: APIMessageTopLevelComponent[]): boolean =>
+      components.some((component) => component.type !== 1);
+
+    const assertEmbedsAndLayoutBlocksDoNotMix = (
+      embeds: APIEmbed[],
+      components: APIMessageTopLevelComponent[],
+      node: INode,
+      operation: string,
+    ): void => {
+      if (embeds.length > 0 && hasLayoutBlocks(components)) {
+        throw new NodeOperationError(
+          node,
+          `Discord messages cannot contain both embeds and v2 layout blocks in ${operation}. Remove either the embeds or the layout blocks before sending the message.`,
+        );
+      }
+    };
+
     for (let i = 0; i < items.length; i += 1) {
       const operation = this.getNodeParameter('operation', i) as Operation;
 
@@ -2980,13 +3511,13 @@ export class DiscordBot implements INodeType {
           | 'builder-merge';
 
         let embeds: APIEmbed[] = [];
-        let components: APIActionRowComponent<any>[] = [];
+        let components: APIMessageTopLevelComponent[] = [];
 
         if (payloadMode === 'raw-json') {
           const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
           const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
           embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-          components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+          components = parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', this);
         } else {
           const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
             embed?: EmbedUiParams[];
@@ -3000,19 +3531,43 @@ export class DiscordBot implements INodeType {
           const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
             select?: AutoSelectMenuUiParams[];
           };
+          const textDisplayParam = this.getNodeParameter('textDisplayBuilder', i, {}) as {
+            display?: TextDisplayUiParams[];
+          };
+          const sectionParam = this.getNodeParameter('sectionBuilder', i, {}) as {
+            section?: SectionUiParams[];
+          };
+          const separatorParam = this.getNodeParameter('separatorBuilder', i, {}) as {
+            separator?: SeparatorUiParams[];
+          };
+          const containerParam = this.getNodeParameter('containerBuilder', i, {}) as {
+            container?: ContainerUiParams[];
+          };
+          const mediaGalleryParam = this.getNodeParameter('mediaGalleryBuilder', i, {}) as {
+            gallery?: MediaGalleryUiParams[];
+          };
+          const fileParam = this.getNodeParameter('fileBuilder', i, {}) as {
+            file?: FileUiParams[];
+          };
           embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
           components = buildAllComponentsFromUi(
             buttonBuilderParam.button ?? [],
             stringSelectParam.select ?? [],
             autoSelectParam.select ?? [],
+            textDisplayParam.display ?? [],
+            sectionParam.section ?? [],
+            separatorParam.separator ?? [],
+            containerParam.container ?? [],
+            mediaGalleryParam.gallery ?? [],
+            fileParam.file ?? [],
             this.getNode(),
-          ) as APIActionRowComponent<any>[];
+          );
 
           if (payloadMode === 'builder-merge') {
             const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
             const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
             const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIActionRowComponent<any>[]>(
+            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
               componentsJson,
               'Components JSON',
               this,
@@ -3021,6 +3576,8 @@ export class DiscordBot implements INodeType {
             components = [...components, ...extraComponents];
           }
         }
+
+        assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
         let poll: any = undefined;
         if (operation === 'send-message-with-poll') {
@@ -3102,13 +3659,13 @@ export class DiscordBot implements INodeType {
           | 'builder-merge';
 
         let embeds: APIEmbed[] = [];
-        let components: APIActionRowComponent<any>[] = [];
+        let components: APIMessageTopLevelComponent[] = [];
 
         if (payloadMode === 'raw-json') {
           const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
           const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
           embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-          components = parseJsonField<APIActionRowComponent<any>[]>(componentsJson, 'Components JSON', this);
+          components = parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', this);
         } else {
           const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
             embed?: EmbedUiParams[];
@@ -3122,19 +3679,43 @@ export class DiscordBot implements INodeType {
           const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
             select?: AutoSelectMenuUiParams[];
           };
+          const textDisplayParam = this.getNodeParameter('textDisplayBuilder', i, {}) as {
+            display?: TextDisplayUiParams[];
+          };
+          const sectionParam = this.getNodeParameter('sectionBuilder', i, {}) as {
+            section?: SectionUiParams[];
+          };
+          const separatorParam = this.getNodeParameter('separatorBuilder', i, {}) as {
+            separator?: SeparatorUiParams[];
+          };
+          const containerParam = this.getNodeParameter('containerBuilder', i, {}) as {
+            container?: ContainerUiParams[];
+          };
+          const mediaGalleryParam = this.getNodeParameter('mediaGalleryBuilder', i, {}) as {
+            gallery?: MediaGalleryUiParams[];
+          };
+          const fileParam = this.getNodeParameter('fileBuilder', i, {}) as {
+            file?: FileUiParams[];
+          };
           embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
           components = buildAllComponentsFromUi(
             buttonBuilderParam.button ?? [],
             stringSelectParam.select ?? [],
             autoSelectParam.select ?? [],
+            textDisplayParam.display ?? [],
+            sectionParam.section ?? [],
+            separatorParam.separator ?? [],
+            containerParam.container ?? [],
+            mediaGalleryParam.gallery ?? [],
+            fileParam.file ?? [],
             this.getNode(),
-          ) as APIActionRowComponent<any>[];
+          );
 
           if (payloadMode === 'builder-merge') {
             const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
             const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
             const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIActionRowComponent<any>[]>(
+            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
               componentsJson,
               'Components JSON',
               this,
@@ -3143,6 +3724,8 @@ export class DiscordBot implements INodeType {
             components = [...components, ...extraComponents];
           }
         }
+
+        assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
         if (!content && !embeds.length && !components.length) {
           throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components to update the message');
@@ -3309,7 +3892,7 @@ export class DiscordBot implements INodeType {
         }
 
         let embeds: APIEmbed[];
-        let components: APIActionRowComponent<any>[];
+        let components: APIMessageTopLevelComponent[];
 
         if (replyPayloadMode === 'raw-json') {
           const replyEmbedsJson = this.getNodeParameter('replyEmbedsJson', i, '[]') as string;
@@ -3322,7 +3905,7 @@ export class DiscordBot implements INodeType {
             'Embeds JSON',
             this,
           );
-          components = parseJsonField<APIActionRowComponent<any>[]>(
+          components = parseJsonField<APIMessageTopLevelComponent[]>(
             replyComponentsJson !== '[]' ? replyComponentsJson : componentsJsonFallback,
             'Components JSON',
             this,
@@ -3340,19 +3923,43 @@ export class DiscordBot implements INodeType {
           const replyAutoSelectCollection = this.getNodeParameter('replyAutoSelectBuilder', i, {}) as {
             select?: AutoSelectMenuUiParams[];
           };
+          const replyTextDisplayCollection = this.getNodeParameter('replyTextDisplayBuilder', i, {}) as {
+            display?: TextDisplayUiParams[];
+          };
+          const replySectionCollection = this.getNodeParameter('replySectionBuilder', i, {}) as {
+            section?: SectionUiParams[];
+          };
+          const replySeparatorCollection = this.getNodeParameter('replySeparatorBuilder', i, {}) as {
+            separator?: SeparatorUiParams[];
+          };
+          const replyContainerCollection = this.getNodeParameter('replyContainerBuilder', i, {}) as {
+            container?: ContainerUiParams[];
+          };
+          const replyGalleryCollection = this.getNodeParameter('replyMediaGalleryBuilder', i, {}) as {
+            gallery?: MediaGalleryUiParams[];
+          };
+          const replyFileCollection = this.getNodeParameter('replyFileBuilder', i, {}) as {
+            file?: FileUiParams[];
+          };
           embeds = buildEmbedsFromUi(replyEmbedsCollection.embeds?.embed ?? [], this.getNode());
           components = buildAllComponentsFromUi(
             replyButtonsCollection.buttons?.button ?? [],
             replyStringSelectCollection.select ?? [],
             replyAutoSelectCollection.select ?? [],
+            replyTextDisplayCollection.display ?? [],
+            replySectionCollection.section ?? [],
+            replySeparatorCollection.separator ?? [],
+            replyContainerCollection.container ?? [],
+            replyGalleryCollection.gallery ?? [],
+            replyFileCollection.file ?? [],
             this.getNode(),
-          ) as APIActionRowComponent<any>[];
+          );
 
           if (replyPayloadMode === 'builder-merge') {
             const replyEmbedsJson = this.getNodeParameter('replyEmbedsJson', i, '[]') as string;
             const replyComponentsJson = this.getNodeParameter('replyComponentsJson', i, '[]') as string;
             const extraEmbeds = parseJsonField<APIEmbed[]>(replyEmbedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIActionRowComponent<any>[]>(
+            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
               replyComponentsJson,
               'Components JSON',
               this,
@@ -3362,6 +3969,7 @@ export class DiscordBot implements INodeType {
           }
         }
 
+        assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
         const responseBody = {
           content: content || undefined,

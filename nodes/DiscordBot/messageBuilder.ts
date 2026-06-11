@@ -1,6 +1,6 @@
 import type { INode } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import type { APIEmbed, APIActionRowComponent } from 'discord.js';
+import type { APIEmbed, APIActionRowComponent, APIMessageTopLevelComponent } from 'discord.js';
 
 // ─── UI Parameter Shapes ─────────────────────────────────────────────────────
 
@@ -37,6 +37,38 @@ export interface ButtonUiParams {
   emojiName?: string;
   emojiId?: string;
   emojiAnimated?: boolean;
+}
+
+/** New Layout Block UI Parameters */
+
+export interface TextDisplayUiParams {
+  content: string;
+}
+
+export interface SectionUiParams {
+  title: string;
+  content: string;
+  thumbnailUrl?: string;
+}
+
+export interface SeparatorUiParams {
+  type: 'horizontal' | 'emoji';
+  emoji?: string;
+}
+
+export interface ContainerUiParams {
+  title: string;
+  content: string;
+  accentColor?: string;
+}
+
+export interface MediaGalleryUiParams {
+  images: string[];
+}
+
+export interface FileUiParams {
+  fileUrl: string;
+  fileName: string;
 }
 
 // ─── Select Menu Shapes ───────────────────────────────────────────────────────
@@ -375,18 +407,30 @@ export function buildAutoSelectsFromUi(
 }
 
 /**
- * Build all component action rows from buttons, string selects, and auto selects.
- * Validates that the combined total does not exceed Discord's 5 action row limit.
+ * Build all Discord message components from buttons, select menus, and layout blocks.
+ * Validates that the combined action rows do not exceed Discord's 5 action row limit.
  */
 export function buildAllComponentsFromUi(
   buttons: ButtonUiParams[],
   stringSelects: StringSelectMenuUiParams[],
   autoSelects: AutoSelectMenuUiParams[],
+  textDisplays: TextDisplayUiParams[],
+  sections: SectionUiParams[],
+  separators: SeparatorUiParams[],
+  containers: ContainerUiParams[],
+  mediaGalleries: MediaGalleryUiParams[],
+  files: FileUiParams[],
   node: INode,
-): APIActionRowComponent<never>[] {
+): APIMessageTopLevelComponent[] {
   const buttonRows = buildComponentsFromUi(buttons, node);
   const stringSelectRows = buildStringSelectsFromUi(stringSelects, node);
   const autoSelectRows = buildAutoSelectsFromUi(autoSelects, node);
+  const textDisplayComponents = buildTextDisplaysFromUi(textDisplays, node);
+  const sectionComponents = buildSectionsFromUi(sections, node);
+  const separatorComponents = buildSeparatorsFromUi(separators, node);
+  const containerComponents = buildContainersFromUi(containers, node);
+  const mediaGalleryComponents = buildMediaGalleriesFromUi(mediaGalleries, node);
+  const fileComponents = buildFilesFromUi(files, node);
 
   const allRows = [...buttonRows, ...stringSelectRows, ...autoSelectRows];
 
@@ -398,10 +442,18 @@ export function buildAllComponentsFromUi(
     );
   }
 
-  return allRows;
+  return [
+    ...allRows,
+    ...textDisplayComponents,
+    ...sectionComponents,
+    ...separatorComponents,
+    ...containerComponents,
+    ...mediaGalleryComponents,
+    ...fileComponents,
+  ];
 }
 
-// ─── Modal Builder ────────────────────────────────────────────────────────────
+// ─── Layout Block Builders ─────────────────────────────────────────────────────
 
 export interface TextInputUiParams {
   customId: string;
@@ -485,4 +537,159 @@ export function buildModalFromUi(modal: ModalUiParams, node: INode): object {
     title: modal.title,
     components,
   };
+}
+
+function asTopLevelComponent(component: Record<string, unknown>): APIMessageTopLevelComponent {
+  return component as unknown as APIMessageTopLevelComponent;
+}
+
+/**
+ * Build a Discord-compatible TextDisplay component.
+ */
+function buildTextDisplaysFromUi(textDisplays: TextDisplayUiParams[], node: INode): APIMessageTopLevelComponent[] {
+  return textDisplays.map((display) => {
+    if (!display.content?.trim()) {
+      throw new NodeOperationError(node, 'Text Display requires content');
+    }
+
+    return {
+      type: 10,
+      content: display.content,
+    } as APIMessageTopLevelComponent;
+  });
+}
+
+/**
+ * Build a Discord-compatible Section component.
+ */
+function buildSectionsFromUi(sections: SectionUiParams[], node: INode): APIMessageTopLevelComponent[] {
+  return sections.map((section) => {
+    if (!section.title?.trim()) {
+      throw new NodeOperationError(node, 'Section requires a Title');
+    }
+
+    const components: Array<Record<string, unknown>> = [
+      {
+        type: 10,
+        content: section.title,
+      },
+    ];
+
+    if (section.content?.trim()) {
+      components.push({
+        type: 10,
+        content: section.content,
+      });
+    }
+
+    const result: Record<string, unknown> = {
+      type: 9,
+      components,
+    };
+
+    if (section.thumbnailUrl?.trim()) {
+      result.accessory = {
+        type: 11,
+        media: {
+          url: section.thumbnailUrl,
+        },
+      };
+    }
+
+    return asTopLevelComponent(result);
+  });
+}
+
+/**
+ * Build a Discord-compatible Separator component.
+ */
+function buildSeparatorsFromUi(separators: SeparatorUiParams[], node: INode): APIMessageTopLevelComponent[] {
+  return separators.map((separator) => {
+    if (separator.type === 'emoji') {
+      const emojiText = separator.emoji?.trim() || '➖';
+      return {
+        type: 10,
+        content: emojiText,
+      } as APIMessageTopLevelComponent;
+    }
+
+    return {
+      type: 14,
+      divider: true,
+      spacing: 1,
+    } as APIMessageTopLevelComponent;
+  });
+}
+
+/**
+ * Build a Discord-compatible Container component.
+ */
+function buildContainersFromUi(containers: ContainerUiParams[], node: INode): APIMessageTopLevelComponent[] {
+  return containers.map((container) => {
+    if (!container.title?.trim()) {
+      throw new NodeOperationError(node, 'Container requires a Title');
+    }
+
+    const result: Record<string, unknown> = {
+      type: 17,
+      components: [
+        {
+          type: 10,
+          content: `${container.title}${container.content ? `\n${container.content}` : ''}`,
+        },
+      ],
+    };
+
+    if (container.accentColor?.trim()) {
+      result.accent_color = parseEmbedColor(container.accentColor, node);
+    }
+
+    return asTopLevelComponent(result);
+  });
+}
+
+/**
+ * Build a Discord-compatible Media Gallery component.
+ */
+function buildMediaGalleriesFromUi(mediaGalleries: MediaGalleryUiParams[], node: INode): APIMessageTopLevelComponent[] {
+  return mediaGalleries.map((gallery) => {
+    const images = gallery.images ?? [];
+    if (images.length === 0) {
+      throw new NodeOperationError(node, 'Media Gallery requires at least one image URL');
+    }
+    if (images.length > 10) {
+      throw new NodeOperationError(node, 'Media Gallery supports up to 10 images');
+    }
+
+    return {
+      type: 12,
+      items: images.map((url) => ({
+        media: { url },
+      })),
+    } as APIMessageTopLevelComponent;
+  });
+}
+
+/**
+ * Build a Discord-compatible File component.
+ */
+function buildFilesFromUi(files: FileUiParams[], node: INode): APIMessageTopLevelComponent[] {
+  return files.map((file) => {
+    if (!file.fileUrl?.trim()) {
+      throw new NodeOperationError(node, 'File requires a URL');
+    }
+
+    const result: Record<string, unknown> = {
+      type: 13,
+      file: {
+        url: file.fileUrl,
+      },
+    };
+
+    if (file.fileName?.trim()) {
+      result.name = file.fileName.trim();
+    }
+
+    return asTopLevelComponent(result);
+  });
 }

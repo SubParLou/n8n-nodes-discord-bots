@@ -12,8 +12,9 @@ const PACKAGE_NAME = pkg.name;
 // Use a static-like check to avoid excessive file system reads during a single process lifetime
 let telemetryCheckedInThisSession = false;
 
-export async function sendTelemetry(nodeType: string, enableTelemetry: boolean = true) {
-	if (!enableTelemetry || telemetryCheckedInThisSession) {
+export async function sendTelemetry(nodeType: string, enableTelemetry?: boolean) {
+	const telemetryEnabled = enableTelemetry !== false;
+	if (!telemetryEnabled || telemetryCheckedInThisSession) {
 		return;
 	}
 
