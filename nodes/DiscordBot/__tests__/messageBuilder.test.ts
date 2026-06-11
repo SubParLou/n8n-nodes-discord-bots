@@ -9,8 +9,14 @@ import {
   parseEmbedColor,
   type AutoSelectMenuUiParams,
   type ButtonUiParams,
+  type ContainerUiParams,
   type EmbedUiParams,
+  type FileUiParams,
+  type MediaGalleryUiParams,
+  type SectionUiParams,
+  type SeparatorUiParams,
   type StringSelectMenuUiParams,
+  type TextDisplayUiParams,
 } from '../messageBuilder';
 
 // Minimal INode mock sufficient for NodeOperationError
@@ -478,16 +484,38 @@ describe('buildAllComponentsFromUi', () => {
   const autoSel = (): AutoSelectMenuUiParams => makeAutoSelect();
 
   it('returns empty array when all inputs are empty', () => {
-    expect(buildAllComponentsFromUi([], [], [], mockNode)).toEqual([]);
+    expect(buildAllComponentsFromUi([], [], [], [], [], [], [], [], [], mockNode)).toEqual([]);
   });
 
   it('combines button rows, string selects, and auto selects in order', () => {
-    const rows = buildAllComponentsFromUi([btn()], [strSel()], [autoSel()], mockNode);
+    const rows = buildAllComponentsFromUi([btn()], [strSel()], [autoSel()], [], [], [], [], [], [], mockNode);
     // 1 button row + 1 string select row + 1 auto select row = 3 rows
     expect(rows).toHaveLength(3);
     expect((rows[0] as any).components[0].type).toBe(2); // button
     expect((rows[1] as any).components[0].type).toBe(3); // string select
     expect((rows[2] as any).components[0].type).toBe(5); // auto select (user)
+  });
+
+  it('supports top-level layout blocks alongside action rows', () => {
+    const rows = buildAllComponentsFromUi(
+      [],
+      [],
+      [],
+      [{ content: 'Hello world' }],
+      [{ title: 'Section title', content: 'Section body', thumbnailUrl: '' }],
+      [{ type: 'horizontal' }],
+      [{ title: 'Container title', content: 'Container body', accentColor: '#ff0000' }],
+      [{ images: ['https://example.com/image.png'] }],
+      [{ fileUrl: 'https://example.com/file.txt', fileName: 'file.txt' }],
+      mockNode,
+    );
+    expect(rows).toHaveLength(6);
+    expect((rows[0] as any).type).toBe(10);
+    expect((rows[1] as any).type).toBe(9);
+    expect((rows[2] as any).type).toBe(14);
+    expect((rows[3] as any).type).toBe(17);
+    expect((rows[4] as any).type).toBe(12);
+    expect((rows[5] as any).type).toBe(13);
   });
 
   it('throws when total action rows exceed 5', () => {
@@ -496,14 +524,14 @@ describe('buildAllComponentsFromUi', () => {
     const stringSelects = [strSel(), strSel(), strSel()];
     const autoSelects = [autoSel(), autoSel()];
     expect(() =>
-      buildAllComponentsFromUi(buttons, stringSelects, autoSelects, mockNode),
+      buildAllComponentsFromUi(buttons, stringSelects, autoSelects, [], [], [], [], [], [], mockNode),
     ).toThrow(NodeOperationError);
   });
 
   it('allows exactly 5 action rows', () => {
     const stringSelects = [strSel(), strSel(), strSel(), strSel(), strSel()];
     expect(() =>
-      buildAllComponentsFromUi([], stringSelects, [], mockNode),
+      buildAllComponentsFromUi([], stringSelects, [], [], [], [], [], [], [], mockNode),
     ).not.toThrow();
   });
 });

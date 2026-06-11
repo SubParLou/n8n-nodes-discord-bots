@@ -16,6 +16,12 @@ Interactions must be responded to within **3 seconds**, or within **15 minutes**
 | Content | Plain text response body |
 | **Message Payload Mode** | Controls how embeds and components are built - same three modes as Send Message (Builder, Raw JSON, Builder + Advanced JSON Merge). See [Messaging Operations](messaging-operations.md) for full details. |
 | Reply Embeds | Visual embed builder (Builder and Builder + Advanced JSON Merge modes). Full field support: title, description, color, footer, author, thumbnail, image, embed fields, timestamp. |
+| Text Displays | Top-level rich text blocks for responses (Builder and Builder + Advanced JSON Merge modes). |
+| Sections | Text sections with optional thumbnail accessories (Builder and Builder + Advanced JSON Merge modes). |
+| Separators | Visual dividers between layout blocks (Builder and Builder + Advanced JSON Merge modes). |
+| Containers | Grouped content blocks with optional accent color (Builder and Builder + Advanced JSON Merge modes). |
+| Media Galleries | Up to 10 image items in a gallery layout (Builder and Builder + Advanced JSON Merge modes). |
+| Files | Inline file display blocks (Builder and Builder + Advanced JSON Merge modes). |
 | Embeds JSON | Raw JSON array of embed objects (Raw JSON and Builder + Advanced JSON Merge modes) |
 | Reply Components | Visual button builder (Builder and Builder + Advanced JSON Merge modes). Buttons are auto-grouped into rows of 5. |
 | String Select Menus | Dropdown menus with custom options (Builder and Builder + Advanced JSON Merge modes). Same fields as in Send Message. |
@@ -34,3 +40,13 @@ Interactions must be responded to within **3 seconds**, or within **15 minutes**
 - The node automatically detects whether to use `reply()` or `followUp()` based on acknowledgement state.
 - If the trigger has **Auto Acknowledge Interactions** enabled, the 3-second window is extended to 15 minutes and this operation sends a follow-up edit to the deferred response.
 - Use **Ephemeral** to send a response only visible to the user who triggered the interaction.
+
+## Example: Responding with layout blocks
+
+1. Set **Message Payload Mode** -> `Builder`.
+2. Under **Text Displays**, click **Add Text Display** and enter content such as `Thanks for your interaction!`.
+3. Under **Sections**, add a section with **Title** `Next Steps` and **Content** `Your request has been received.`.
+4. Under **Separators**, add a separator to visually split sections.
+5. Execute the node - the interaction response is sent using Discord Components v2 layout blocks.
+
+> Note: Reply Embeds cannot be combined with layout blocks in the same response. If both are configured, the node will reject the payload with a clear validation error.

@@ -158,11 +158,42 @@ Each auto-populated select menu also supports Custom ID, Placeholder, Min/Max Va
 
 **Discord limits for all components:** max 5 action rows per message. Each button group counts as one row (up to 5 buttons); each select menu occupies its own row.
 
+---
+
+## Layout Block Builder
+
+Available in Builder and Builder + Advanced JSON Merge modes.
+
+Discord Components v2 layout blocks are rendered as top-level message components rather than embeds. They support the following block types:
+
+- **Text Displays**: rich text content blocks.
+- **Sections**: title/content blocks with optional thumbnail accessory.
+- **Separators**: visual dividers between blocks.
+- **Containers**: grouped content blocks with optional accent color.
+- **Media Galleries**: up to 10 image items.
+- **Files**: inline attachment display blocks.
+
+**Important:** embeds and Discord Components v2 layout blocks cannot be used together in the same message. If both are configured, the node will reject the payload with a descriptive validation error.
+
 [^ Top](#messaging-operations)
 
 ---
 
 ## Examples
+
+### Sending a layout block message (Builder mode)
+
+1. Set **Message Payload Mode** -> `Builder`.
+2. Under **Text Displays**, click **Add Text Display** and set **Content** to `Hello from Discord Components v2!`.
+3. Under **Sections**, click **Add Section** and fill in **Title**: `Summary` and **Content**: `This section uses a layout block instead of an embed.`.
+4. Under **Separators**, click **Add Separator** to insert a visual divider.
+5. Under **Containers**, click **Add Container**, set **Title**: `Note`, **Content**: `Layout blocks cannot be combined with embeds in the same message.`, and choose an **Accent Color**.
+6. Optional: add a **Media Gallery** or **File** block to include images or attachments.
+7. Execute the node - the message is rendered as layout blocks in Discord.
+
+> Note: If you also add content under **Embeds**, the node will reject the message because embeds and layout blocks are mutually exclusive.
+
+### Sending a simple embed (Builder mode)
 
 ### Sending a simple embed (Builder mode)
 
