@@ -5,6 +5,7 @@ import {
   type APIEmbed,
   type APIActionRowComponent,
   type APIMessageTopLevelComponent,
+  type Client,
 } from 'discord.js';
 import type {
   IExecuteFunctions,
@@ -111,6 +112,24 @@ function isAlreadyAcknowledgedInteractionError(error: unknown): boolean {
 
   const message = error instanceof Error ? error.message : String(error);
   return /already been acknowledged/i.test(message);
+}
+
+/**
+ * Fetch a message from a text-based channel, validating the channel supports
+ * messages. Shared by the message-management operations that target a single
+ * message by channel + message ID.
+ */
+async function fetchTextChannelMessage(
+  client: Client,
+  channelId: string,
+  messageId: string,
+  node: INode,
+): Promise<any> {
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+    throw new NodeOperationError(node, `Channel ${channelId} is not a text channel`);
+  }
+  return (channel as any).messages.fetch(messageId);
 }
 
 /**
@@ -3740,11 +3759,7 @@ export class DiscordBot implements INodeType {
           throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components to update the message');
         }
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
         await message.edit({
           content: content || null,
           embeds,
@@ -4178,11 +4193,7 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
         await message.delete();
 
         returnData.push({ json: { operation, channelId, messageId, deleted: true }, pairedItem: { item: i } });
@@ -4194,11 +4205,7 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
 
         returnData.push({
           json: {
@@ -4273,11 +4280,7 @@ export class DiscordBot implements INodeType {
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
         const emoji = this.getNodeParameter('reactionEmoji', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
 
         if (operation === 'add-reaction') {
           await message.react(emoji);
@@ -4303,11 +4306,7 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
 
         if (operation === 'pin-message') {
           await message.pin();
@@ -4544,11 +4543,7 @@ export class DiscordBot implements INodeType {
         const rateLimitPerUser = this.getNodeParameter('threadSlowmode', i, 0) as number;
         const reason = this.getNodeParameter('threadCreateReason', i, '') as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
         const thread = await message.startThread({
           name,
           autoArchiveDuration,
