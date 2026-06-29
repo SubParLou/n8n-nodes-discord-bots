@@ -113,6 +113,68 @@ function isAlreadyAcknowledgedInteractionError(error: unknown): boolean {
   return /already been acknowledged/i.test(message);
 }
 
+/**
+ * Resolve embeds and components from the shared message-builder parameters
+ * (Raw JSON / Builder / Builder + Advanced JSON Merge). Used by send-message,
+ * send-message-with-poll, and update-message, which expose identical fields.
+ */
+function resolveMessagePayload(
+  ctx: IExecuteFunctions,
+  i: number,
+): { embeds: APIEmbed[]; components: APIMessageTopLevelComponent[] } {
+  const payloadMode = ctx.getNodeParameter('payloadMode', i, 'builder') as
+    | 'builder'
+    | 'raw-json'
+    | 'builder-merge';
+
+  if (payloadMode === 'raw-json') {
+    const embedsJson = ctx.getNodeParameter('embedsJson', i, '[]') as string;
+    const componentsJson = ctx.getNodeParameter('componentsJson', i, '[]') as string;
+    return {
+      embeds: parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', ctx),
+      components: parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', ctx),
+    };
+  }
+
+  const node = ctx.getNode();
+  const embedBuilderParam = ctx.getNodeParameter('embedBuilder', i, {}) as { embed?: EmbedUiParams[] };
+  const buttonBuilderParam = ctx.getNodeParameter('buttonBuilder', i, {}) as { button?: ButtonUiParams[] };
+  const stringSelectParam = ctx.getNodeParameter('stringSelectBuilder', i, {}) as { select?: StringSelectMenuUiParams[] };
+  const autoSelectParam = ctx.getNodeParameter('autoSelectBuilder', i, {}) as { select?: AutoSelectMenuUiParams[] };
+  const textDisplayParam = ctx.getNodeParameter('textDisplayBuilder', i, {}) as { display?: TextDisplayUiParams[] };
+  const sectionParam = ctx.getNodeParameter('sectionBuilder', i, {}) as { section?: SectionUiParams[] };
+  const separatorParam = ctx.getNodeParameter('separatorBuilder', i, {}) as { separator?: SeparatorUiParams[] };
+  const containerParam = ctx.getNodeParameter('containerBuilder', i, {}) as { container?: ContainerUiParams[] };
+  const mediaGalleryParam = ctx.getNodeParameter('mediaGalleryBuilder', i, {}) as { gallery?: MediaGalleryUiParams[] };
+  const fileParam = ctx.getNodeParameter('fileBuilder', i, {}) as { file?: FileUiParams[] };
+
+  let embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], node);
+  let components = buildAllComponentsFromUi(
+    buttonBuilderParam.button ?? [],
+    stringSelectParam.select ?? [],
+    autoSelectParam.select ?? [],
+    textDisplayParam.display ?? [],
+    sectionParam.section ?? [],
+    separatorParam.separator ?? [],
+    containerParam.container ?? [],
+    mediaGalleryParam.gallery ?? [],
+    fileParam.file ?? [],
+    node,
+  );
+
+  if (payloadMode === 'builder-merge') {
+    const embedsJson = ctx.getNodeParameter('embedsJson', i, '[]') as string;
+    const componentsJson = ctx.getNodeParameter('componentsJson', i, '[]') as string;
+    embeds = [...embeds, ...parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', ctx)];
+    components = [
+      ...components,
+      ...parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', ctx),
+    ];
+  }
+
+  return { embeds, components };
+}
+
 export class DiscordBot implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Discord Bot',
@@ -3590,77 +3652,8 @@ export class DiscordBot implements INodeType {
         const client = await getClient(credentials);
         const targetType = this.getNodeParameter('targetType', i) as 'channel' | 'user-dm';
         const content = this.getNodeParameter('content', i, '') as string;
-        const payloadMode = this.getNodeParameter('payloadMode', i, 'builder') as
-          | 'builder'
-          | 'raw-json'
-          | 'builder-merge';
 
-        let embeds: APIEmbed[] = [];
-        let components: APIMessageTopLevelComponent[] = [];
-
-        if (payloadMode === 'raw-json') {
-          const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-          const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-          components = parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', this);
-        } else {
-          const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
-            embed?: EmbedUiParams[];
-          };
-          const buttonBuilderParam = this.getNodeParameter('buttonBuilder', i, {}) as {
-            button?: ButtonUiParams[];
-          };
-          const stringSelectParam = this.getNodeParameter('stringSelectBuilder', i, {}) as {
-            select?: StringSelectMenuUiParams[];
-          };
-          const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
-            select?: AutoSelectMenuUiParams[];
-          };
-          const textDisplayParam = this.getNodeParameter('textDisplayBuilder', i, {}) as {
-            display?: TextDisplayUiParams[];
-          };
-          const sectionParam = this.getNodeParameter('sectionBuilder', i, {}) as {
-            section?: SectionUiParams[];
-          };
-          const separatorParam = this.getNodeParameter('separatorBuilder', i, {}) as {
-            separator?: SeparatorUiParams[];
-          };
-          const containerParam = this.getNodeParameter('containerBuilder', i, {}) as {
-            container?: ContainerUiParams[];
-          };
-          const mediaGalleryParam = this.getNodeParameter('mediaGalleryBuilder', i, {}) as {
-            gallery?: MediaGalleryUiParams[];
-          };
-          const fileParam = this.getNodeParameter('fileBuilder', i, {}) as {
-            file?: FileUiParams[];
-          };
-          embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
-          components = buildAllComponentsFromUi(
-            buttonBuilderParam.button ?? [],
-            stringSelectParam.select ?? [],
-            autoSelectParam.select ?? [],
-            textDisplayParam.display ?? [],
-            sectionParam.section ?? [],
-            separatorParam.separator ?? [],
-            containerParam.container ?? [],
-            mediaGalleryParam.gallery ?? [],
-            fileParam.file ?? [],
-            this.getNode(),
-          );
-
-          if (payloadMode === 'builder-merge') {
-            const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-            const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-            const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
-              componentsJson,
-              'Components JSON',
-              this,
-            );
-            embeds = [...embeds, ...extraEmbeds];
-            components = [...components, ...extraComponents];
-          }
-        }
+        const { embeds, components } = resolveMessagePayload(this, i);
 
         assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
@@ -3738,77 +3731,8 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('updateChannelId', i) as string;
         const messageId = this.getNodeParameter('updateMessageId', i) as string;
         const content = this.getNodeParameter('content', i, '') as string;
-        const payloadMode = this.getNodeParameter('payloadMode', i, 'builder') as
-          | 'builder'
-          | 'raw-json'
-          | 'builder-merge';
 
-        let embeds: APIEmbed[] = [];
-        let components: APIMessageTopLevelComponent[] = [];
-
-        if (payloadMode === 'raw-json') {
-          const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-          const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-          components = parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', this);
-        } else {
-          const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
-            embed?: EmbedUiParams[];
-          };
-          const buttonBuilderParam = this.getNodeParameter('buttonBuilder', i, {}) as {
-            button?: ButtonUiParams[];
-          };
-          const stringSelectParam = this.getNodeParameter('stringSelectBuilder', i, {}) as {
-            select?: StringSelectMenuUiParams[];
-          };
-          const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
-            select?: AutoSelectMenuUiParams[];
-          };
-          const textDisplayParam = this.getNodeParameter('textDisplayBuilder', i, {}) as {
-            display?: TextDisplayUiParams[];
-          };
-          const sectionParam = this.getNodeParameter('sectionBuilder', i, {}) as {
-            section?: SectionUiParams[];
-          };
-          const separatorParam = this.getNodeParameter('separatorBuilder', i, {}) as {
-            separator?: SeparatorUiParams[];
-          };
-          const containerParam = this.getNodeParameter('containerBuilder', i, {}) as {
-            container?: ContainerUiParams[];
-          };
-          const mediaGalleryParam = this.getNodeParameter('mediaGalleryBuilder', i, {}) as {
-            gallery?: MediaGalleryUiParams[];
-          };
-          const fileParam = this.getNodeParameter('fileBuilder', i, {}) as {
-            file?: FileUiParams[];
-          };
-          embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
-          components = buildAllComponentsFromUi(
-            buttonBuilderParam.button ?? [],
-            stringSelectParam.select ?? [],
-            autoSelectParam.select ?? [],
-            textDisplayParam.display ?? [],
-            sectionParam.section ?? [],
-            separatorParam.separator ?? [],
-            containerParam.container ?? [],
-            mediaGalleryParam.gallery ?? [],
-            fileParam.file ?? [],
-            this.getNode(),
-          );
-
-          if (payloadMode === 'builder-merge') {
-            const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-            const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-            const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
-              componentsJson,
-              'Components JSON',
-              this,
-            );
-            embeds = [...embeds, ...extraEmbeds];
-            components = [...components, ...extraComponents];
-          }
-        }
+        const { embeds, components } = resolveMessagePayload(this, i);
 
         assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
