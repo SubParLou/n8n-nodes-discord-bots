@@ -115,6 +115,22 @@ function isAlreadyAcknowledgedInteractionError(error: unknown): boolean {
 }
 
 /**
+ * Build a loadOptions method that lists channels for the guilds selected in the
+ * given parameter. The channel-selection fields across operations differ only
+ * by which guild-IDs parameter they depend on.
+ */
+function channelLoader(guildParam: string) {
+  return async function (this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+    const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+    const guildIds = this.getNodeParameter(guildParam, 0) as string[];
+    if (!guildIds.length) {
+      throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+    }
+    return loadChannelOptions(credentials, guildIds);
+  };
+}
+
+/**
  * Fetch a message from a text-based channel, validating the channel supports
  * messages. Shared by the message-management operations that target a single
  * message by channel + message ID.
@@ -3598,46 +3614,11 @@ export class DiscordBot implements INodeType {
         const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
         return loadGuildOptions(credentials);
       },
-      async getChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('guildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getUpdateChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('updateGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getMsgOpChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('msgOpGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getHistoryChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('historyGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getThreadChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('threadCreateGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
+      getChannels: channelLoader('guildIds'),
+      getUpdateChannels: channelLoader('updateGuildIds'),
+      getMsgOpChannels: channelLoader('msgOpGuildIds'),
+      getHistoryChannels: channelLoader('historyGuildIds'),
+      getThreadChannels: channelLoader('threadCreateGuildIds'),
     },
   };
 
