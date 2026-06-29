@@ -7,6 +7,7 @@ import {
   Routes,
   type ApplicationCommandOptionData,
   type ClientEvents,
+  type Guild,
 } from 'discord.js';
 import type { INodePropertyOptions } from 'n8n-workflow';
 import type { CachedDiscordClient, DiscordBotCredentials } from './types';
@@ -99,9 +100,16 @@ export async function loadGuildOptions(credentials: DiscordBotCredentials): Prom
   }));
 }
 
-export async function loadChannelOptions(
+/**
+ * Fetch options across the given guilds, deduped by ID. The `collect` callback
+ * fetches the relevant resource (channels, roles, …) for one guild and adds
+ * `{ name, value }` entries to the shared map. Per-guild failures are logged
+ * and skipped so one bad guild does not blank the whole list.
+ */
+async function loadGuildResourceOptions(
   credentials: DiscordBotCredentials,
   guildIds: string[],
+  collect: (guild: Guild, optionsById: Map<string, INodePropertyOptions>) => Promise<void>,
 ): Promise<INodePropertyOptions[]> {
   const client = await getClient(credentials);
   const uniqueGuildIds = [...new Set(guildIds)];
@@ -111,22 +119,9 @@ export async function loadChannelOptions(
     uniqueGuildIds.map(async (guildId) => {
       try {
         const guild = await client.guilds.fetch(guildId);
-        const channels = await guild.channels.fetch();
-
-        channels.forEach((channel) => {
-          if (!channel) {
-            return;
-          }
-
-          if (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement) {
-            optionsById.set(channel.id, {
-              name: `${guild.name} / ${channel.name}`,
-              value: channel.id,
-            });
-          }
-        });
+        await collect(guild, optionsById);
       } catch (error) {
-        console.warn('[DiscordBot] Failed to load channel options for guild', {
+        console.warn('[DiscordBot] Failed to load options for guild', {
           guildId,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -137,78 +132,46 @@ export async function loadChannelOptions(
   return [...optionsById.values()];
 }
 
-export async function loadVoiceChannelOptions(
+export function loadChannelOptions(
   credentials: DiscordBotCredentials,
   guildIds: string[],
 ): Promise<INodePropertyOptions[]> {
-  const client = await getClient(credentials);
-  const uniqueGuildIds = [...new Set(guildIds)];
-  const optionsById = new Map<string, INodePropertyOptions>();
-
-  await Promise.all(
-    uniqueGuildIds.map(async (guildId) => {
-      try {
-        const guild = await client.guilds.fetch(guildId);
-        const channels = await guild.channels.fetch();
-
-        channels.forEach((channel) => {
-          if (!channel) {
-            return;
-          }
-
-          if (channel.type === ChannelType.GuildVoice || channel.type === ChannelType.GuildStageVoice) {
-            optionsById.set(channel.id, {
-              name: `${guild.name} / ${channel.name}`,
-              value: channel.id,
-            });
-          }
-        });
-      } catch (error) {
-        console.warn('[DiscordBot] Failed to load voice channel options for guild', {
-          guildId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+  return loadGuildResourceOptions(credentials, guildIds, async (guild, optionsById) => {
+    const channels = await guild.channels.fetch();
+    channels.forEach((channel) => {
+      if (channel?.type === ChannelType.GuildText || channel?.type === ChannelType.GuildAnnouncement) {
+        optionsById.set(channel.id, { name: `${guild.name} / ${channel.name}`, value: channel.id });
       }
-    }),
-  );
-
-  return [...optionsById.values()];
+    });
+  });
 }
 
-export async function loadRoleOptions(
+export function loadVoiceChannelOptions(
   credentials: DiscordBotCredentials,
   guildIds: string[],
 ): Promise<INodePropertyOptions[]> {
-  const client = await getClient(credentials);
-  const uniqueGuildIds = [...new Set(guildIds)];
-  const optionsById = new Map<string, INodePropertyOptions>();
-
-  await Promise.all(
-    uniqueGuildIds.map(async (guildId) => {
-      try {
-        const guild = await client.guilds.fetch(guildId);
-        const roles = await guild.roles.fetch();
-
-        roles.forEach((role) => {
-          if (!role || role.name === '@everyone') {
-            return;
-          }
-
-          optionsById.set(role.id, {
-            name: `${guild.name} / ${role.name}`,
-            value: role.id,
-          });
-        });
-      } catch (error) {
-        console.warn('[DiscordBot] Failed to load role options for guild', {
-          guildId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+  return loadGuildResourceOptions(credentials, guildIds, async (guild, optionsById) => {
+    const channels = await guild.channels.fetch();
+    channels.forEach((channel) => {
+      if (channel?.type === ChannelType.GuildVoice || channel?.type === ChannelType.GuildStageVoice) {
+        optionsById.set(channel.id, { name: `${guild.name} / ${channel.name}`, value: channel.id });
       }
-    }),
-  );
+    });
+  });
+}
 
-  return [...optionsById.values()];
+export function loadRoleOptions(
+  credentials: DiscordBotCredentials,
+  guildIds: string[],
+): Promise<INodePropertyOptions[]> {
+  return loadGuildResourceOptions(credentials, guildIds, async (guild, optionsById) => {
+    const roles = await guild.roles.fetch();
+    roles.forEach((role) => {
+      if (role && role.name !== '@everyone') {
+        optionsById.set(role.id, { name: `${guild.name} / ${role.name}`, value: role.id });
+      }
+    });
+  });
 }
 
 export async function registerSlashCommand(parameters: {
