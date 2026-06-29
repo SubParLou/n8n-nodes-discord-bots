@@ -7,7 +7,6 @@ export interface DiscordBotCredentials {
 }
 
 export interface CachedDiscordClient {
-  token: string;
   client: Client;
   ready: Promise<Client>;
 }

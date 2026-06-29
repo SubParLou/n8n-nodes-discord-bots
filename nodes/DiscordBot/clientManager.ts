@@ -51,7 +51,7 @@ function createDiscordClient(token: string): CachedDiscordClient {
     client.login(token).catch(reject);
   });
 
-  return { token, client, ready };
+  return { client, ready };
 }
 
 export async function getClient(credentials: DiscordBotCredentials): Promise<Client> {
