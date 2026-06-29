@@ -866,14 +866,10 @@ export class DiscordBotTrigger implements INodeType {
       return roleIds.some((id) => (memberRoles as Map<string, unknown>).has(id));
     };
 
-    console.log(`[DiscordBotTrigger] Registering ${event} listener | guildIds=${JSON.stringify(guildIds)} | channelIds=${JSON.stringify(channelIds)} | pattern=${pattern}`);
-
     if (event === 'channel-message' || event === 'direct-message') {
       removeListeners.push(
         addClientListener(client, 'messageCreate', async (message) => {
           try {
-            console.log(`[DiscordBotTrigger:messageCreate] guildId=${message.guildId} channelId=${message.channelId} partial=${message.partial} authorBot=${message.author?.bot ?? 'null'} channelType=${message.channel?.type} event=${event}`);
-
             if (message.partial) {
               try {
                 await message.fetch();
@@ -890,7 +886,6 @@ export class DiscordBotTrigger implements INodeType {
             // message.author is null on unfetched partial messages — guard before access.
             const authorIsBot = message.author?.bot ?? false;
             if (authorIsBot && !includeBotMessages) {
-              console.log('[DiscordBotTrigger:messageCreate] filtered: author is bot');
               return;
             }
 
@@ -899,31 +894,18 @@ export class DiscordBotTrigger implements INodeType {
                               (event === 'direct-message' && !message.guildId);
 
             if (!contextOk) {
-              let reason: string;
-              if (event === 'channel-message') {
-                reason = `Expected guild context but found message with guildId=${message.guildId}`;
-              } else if (event === 'direct-message') {
-                reason = `Expected DM context, but received message in a guild (guildId=${message.guildId})`;
-              } else {
-                // Fallback for other cases where the event type might be mismatched.
-                reason = ''; 
-              }
-              console.log(`[DiscordBotTrigger:messageCreate] filtered: Context mismatch - ${reason}`);
               return;
             }
 
             if (event === 'channel-message' && !passGuildFilter(message.guildId, message.guild?.name ?? null)) {
-              console.log(`[DiscordBotTrigger:messageCreate] filtered: guild mismatch guildId=${message.guildId} against ${JSON.stringify(guildIds)}`);
               return;
             }
 
             if (event === 'channel-message' && !passChannelFilter(message)) {
-              console.log(`[DiscordBotTrigger:messageCreate] filtered: channel mismatch channelId=${message.channelId} against ${JSON.stringify(channelIds)}`);
               return;
             }
 
             if (event === 'channel-message' && !passRoleFilter(message)) {
-              console.log('[DiscordBotTrigger:messageCreate] filtered: role mismatch');
               return;
             }
 
@@ -934,13 +916,11 @@ export class DiscordBotTrigger implements INodeType {
               // Reply to a bot message (with or without the @mention tick)
               const botRepliedTo = message.reference != null && message.mentions.repliedUser?.id === botId;
               if (!botMentioned && !botRepliedTo) {
-                console.log('[DiscordBotTrigger:messageCreate] filtered: bot not mentioned or replied to');
                 return;
               }
             } else {
               const messageContent = typeof message.content === 'string' ? message.content : '';
               if (!matchPattern(messageContent, pattern, patternValue, caseSensitive)) {
-                console.log(`[DiscordBotTrigger:messageCreate] filtered: pattern mismatch pattern=${pattern}`);
                 return;
               }
             }
@@ -967,7 +947,6 @@ export class DiscordBotTrigger implements INodeType {
               }
             }
 
-            console.log('[DiscordBotTrigger:messageCreate] emitting event');
             this.emit([this.helpers.returnJsonArray({ ...buildMessagePayload(message), referencedMessage })]);
           } catch (error) {
             logNonCriticalError('Unhandled error in messageCreate handler', error, {
