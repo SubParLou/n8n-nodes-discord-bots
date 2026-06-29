@@ -357,14 +357,16 @@ function buildInteractionPayload(interaction: Interaction) {
   }
 
   if (interaction.isModalSubmit()) {
+    const fields = interaction.fields.fields.map((f) => ({
+      customId: f.customId,
+      value: interaction.fields.getTextInputValue(f.customId) ?? null,
+    }));
     return {
       ...base,
       type: 'modal-submit',
       customId: interaction.customId,
-      fields: interaction.fields.fields.map((f) => ({
-        customId: f.customId,
-        value: 'value' in f ? f.value : null,
-      })),
+      fields,
+      values: Object.fromEntries(fields.map((f) => [f.customId, f.value])),
     };
   }
 

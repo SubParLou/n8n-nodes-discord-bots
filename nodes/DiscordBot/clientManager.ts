@@ -237,6 +237,37 @@ export async function registerSlashCommand(parameters: {
   return response;
 }
 
+export async function deleteSlashCommand(parameters: {
+  token: string;
+  clientId: string;
+  commandId: string;
+  guildId?: string;
+}): Promise<void> {
+  const { token, clientId, commandId, guildId } = parameters;
+
+  const rest = new REST({ version: '10' }).setToken(token);
+  const route = guildId
+    ? Routes.applicationGuildCommand(clientId, guildId, commandId)
+    : Routes.applicationCommand(clientId, commandId);
+
+  await rest.delete(route);
+}
+
+export async function listSlashCommands(parameters: {
+  token: string;
+  clientId: string;
+  guildId?: string;
+}): Promise<Array<{ id: string; name: string; description: string; type: number; guild_id?: string }>> {
+  const { token, clientId, guildId } = parameters;
+
+  const rest = new REST({ version: '10' }).setToken(token);
+  const route = guildId
+    ? Routes.applicationGuildCommands(clientId, guildId)
+    : Routes.applicationCommands(clientId);
+
+  return rest.get(route) as Promise<Array<{ id: string; name: string; description: string; type: number; guild_id?: string }>>;
+}
+
 // ApplicationCommandType: 2 = User context menu, 3 = Message context menu
 export async function registerContextMenuCommand(parameters: {
   token: string;

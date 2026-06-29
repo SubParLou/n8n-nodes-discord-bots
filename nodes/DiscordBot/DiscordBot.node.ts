@@ -17,7 +17,9 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import {
+  deleteSlashCommand,
   getClient,
+  listSlashCommands,
   loadChannelOptions,
   loadGuildOptions,
   registerContextMenuCommand,
@@ -45,6 +47,8 @@ import {
 type Operation =
   | 'send-message'
   | 'update-message'
+  | 'delete-slash-command'
+  | 'list-slash-commands'
   | 'register-context-menu-command'
   | 'register-slash-command'
   | 'respond-to-interaction'
@@ -152,6 +156,7 @@ export class DiscordBot implements INodeType {
           { name: 'Delete Message', value: 'delete-message' },
           { name: 'Delete Role', value: 'delete-role' },
           { name: 'Delete Scheduled Event', value: 'delete-scheduled-event' },
+          { name: 'Delete Slash Command', value: 'delete-slash-command' },
           { name: 'Edit Channel', value: 'edit-channel' },
           { name: 'Edit Role', value: 'edit-role' },
           { name: 'Edit Scheduled Event', value: 'edit-scheduled-event' },
@@ -161,6 +166,7 @@ export class DiscordBot implements INodeType {
           { name: 'Fetch Message History', value: 'fetch-message-history' },
           { name: 'Kick Member', value: 'kick-member' },
           { name: 'List Scheduled Events', value: 'list-scheduled-events' },
+          { name: 'List Slash Commands', value: 'list-slash-commands' },
           { name: 'Pin Message', value: 'pin-message' },
           { name: 'Register Context Menu Command', value: 'register-context-menu-command' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
@@ -2105,6 +2111,38 @@ export class DiscordBot implements INodeType {
                     type: 'boolean',
                     default: false,
                   },
+                  {
+                    displayName: 'Predefined Choices',
+                    name: 'choices',
+                    type: 'fixedCollection',
+                    typeOptions: { multipleValues: true },
+                    displayOptions: { show: { type: [3, 4] } },
+                    placeholder: 'Add Choice',
+                    default: {},
+                    description: 'Restrict this option to a set of predefined values. Users must pick one of these choices.',
+                    options: [
+                      {
+                        displayName: 'Choice',
+                        name: 'choice',
+                        values: [
+                          {
+                            displayName: 'Name',
+                            name: 'name',
+                            type: 'string',
+                            default: '',
+                            description: 'Label shown to the user in Discord (1–100 characters)',
+                          },
+                          {
+                            displayName: 'Value',
+                            name: 'value',
+                            type: 'string',
+                            default: '',
+                            description: 'Value sent to the bot when selected. For Integer options, must be a whole number.',
+                          },
+                        ],
+                      },
+                    ],
+                  },
                 ],
               },
             ],
@@ -2173,6 +2211,41 @@ export class DiscordBot implements INodeType {
         },
         default: '',
         description: 'Register as a guild-scoped command (instant). Leave empty to register globally (up to 1 hour to propagate).',
+      },
+
+      // ─── Delete Slash Command Fields ────────────────────────────────────────
+      {
+        displayName: 'Command ID',
+        name: 'deleteCommandId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-slash-command'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the slash command to delete. You can get this from the output of the Register Slash Command operation, or from List Slash Commands.',
+      },
+      {
+        displayName: 'Guild ID',
+        name: 'deleteCommandGuildId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-slash-command'] },
+        },
+        default: '',
+        description: 'Required if deleting a guild-scoped command. Leave empty to delete a global command.',
+      },
+
+      // ─── List Slash Commands Fields ─────────────────────────────────────────
+      {
+        displayName: 'Guild ID',
+        name: 'listCommandsGuildId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['list-slash-commands'] },
+        },
+        default: '',
+        description: 'List commands for a specific guild. Leave empty to list global commands.',
       },
 
       // ─── Message Operation Shared Fields ───────────────────────────────────
@@ -2436,6 +2509,17 @@ export class DiscordBot implements INodeType {
             ],
           },
         ],
+      },
+
+      {
+        displayName: 'Or Provide Components as Raw JSON',
+        name: 'modalComponentsJson',
+        type: 'json',
+        displayOptions: {
+          show: { operation: ['send-modal'] },
+        },
+        default: '',
+        description: 'Advanced: provide the modal components array as raw JSON (array of action row objects). When non-empty, overrides the Text Inputs builder above.',
       },
 
       // ─── Member Management Shared Fields ───────────────────────────────────
@@ -3755,6 +3839,62 @@ export class DiscordBot implements INodeType {
         continue;
       }
 
+      if (operation === 'delete-slash-command') {
+        const commandId = this.getNodeParameter('deleteCommandId', i) as string;
+        const guildId = this.getNodeParameter('deleteCommandGuildId', i, '') as string;
+
+        if (!commandId.trim()) {
+          throw new NodeOperationError(this.getNode(), 'Command ID is required');
+        }
+
+        await deleteSlashCommand({
+          token: credentials.token,
+          clientId: credentials.clientId,
+          commandId: commandId.trim(),
+          guildId: guildId || undefined,
+        });
+
+        returnData.push({
+          json: {
+            operation,
+            deleted: true,
+            commandId: commandId.trim(),
+            scope: guildId ? 'guild' : 'global',
+            guildId: guildId || null,
+          },
+          pairedItem: { item: i },
+        });
+
+        continue;
+      }
+
+      if (operation === 'list-slash-commands') {
+        const guildId = this.getNodeParameter('listCommandsGuildId', i, '') as string;
+
+        const commands = await listSlashCommands({
+          token: credentials.token,
+          clientId: credentials.clientId,
+          guildId: guildId || undefined,
+        });
+
+        for (const cmd of commands) {
+          returnData.push({
+            json: {
+              operation,
+              commandId: cmd.id,
+              commandName: cmd.name,
+              commandDescription: cmd.description,
+              commandType: cmd.type,
+              scope: cmd.guild_id ? 'guild' : 'global',
+              guildId: cmd.guild_id ?? null,
+            },
+            pairedItem: { item: i },
+          });
+        }
+
+        continue;
+      }
+
       if (operation === 'register-context-menu-command') {
         const commandType = this.getNodeParameter('contextMenuCommandType', i) as 'user' | 'message';
         const commandName = this.getNodeParameter('contextMenuCommandName', i) as string;
@@ -3816,7 +3956,15 @@ export class DiscordBot implements INodeType {
 
         // Try to use the friendly builder first
         const commandOptionsCollection = this.getNodeParameter('commandOptions', i, {}) as {
-          options?: { option?: Array<{ name: string; description: string; type: number; required: boolean }> };
+          options?: {
+            option?: Array<{
+              name: string;
+              description: string;
+              type: number;
+              required: boolean;
+              choices?: { choice?: Array<{ name: string; value: string }> };
+            }>;
+          };
         };
 
         if (
@@ -3824,12 +3972,22 @@ export class DiscordBot implements INodeType {
           Array.isArray(commandOptionsCollection.options.option) &&
           commandOptionsCollection.options.option.length > 0
         ) {
-          commandOptions = commandOptionsCollection.options.option.map((opt) => ({
-            name: opt.name,
-            description: opt.description,
-            type: opt.type,
-            required: opt.required,
-          }));
+          commandOptions = commandOptionsCollection.options.option.map((opt) => {
+            const base: Record<string, unknown> = {
+              name: opt.name,
+              description: opt.description,
+              type: opt.type,
+              required: opt.required,
+            };
+            const rawChoices = opt.choices?.choice;
+            if (rawChoices && rawChoices.length > 0) {
+              base.choices = rawChoices.map((c) => ({
+                name: c.name,
+                value: opt.type === 4 ? parseInt(c.value, 10) : c.value,
+              }));
+            }
+            return base;
+          }) as unknown as ApplicationCommandOptionData[];
         } else {
           // Fall back to JSON if no options were added via the builder
           const commandOptionsJson = this.getNodeParameter('commandOptionsJson', i, '[]') as string;
@@ -3838,6 +3996,74 @@ export class DiscordBot implements INodeType {
             'Command Options JSON',
             this,
           );
+        }
+
+        for (let optIdx = 0; optIdx < commandOptions.length; optIdx++) {
+          const opt = commandOptions[optIdx] as { name?: unknown; description?: unknown; type?: unknown; choices?: unknown };
+          const optName = typeof opt.name === 'string' ? opt.name.trim() : '';
+          const optDesc = typeof opt.description === 'string' ? opt.description.trim() : '';
+          const optType = typeof opt.type === 'number' ? opt.type : 0;
+
+          if (!optName) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} is missing a name. Each option must have a name (1–32 characters, only lowercase letters, numbers, hyphens, or underscores).`,
+            );
+          }
+          if (!/^[\w-]{1,32}$/.test(optName)) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} has an invalid name "${optName}". Option names must be 1–32 characters and contain only lowercase letters, numbers, hyphens, or underscores.`,
+            );
+          }
+          if (!optDesc) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") is missing a description. Each option must have a description (1–100 characters).`,
+            );
+          }
+          if (optDesc.length > 100) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") description is too long (${optDesc.length} characters). Descriptions must be 100 characters or fewer.`,
+            );
+          }
+
+          const choices = Array.isArray(opt.choices) ? (opt.choices as Array<{ name?: unknown; value?: unknown }>) : [];
+          if (choices.length > 25) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") has too many predefined choices (${choices.length}). Discord allows a maximum of 25 choices per option.`,
+            );
+          }
+          for (let choiceIdx = 0; choiceIdx < choices.length; choiceIdx++) {
+            const choice = choices[choiceIdx];
+            const choiceName = typeof choice.name === 'string' ? choice.name : '';
+            if (!choiceName) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") is missing a name.`,
+              );
+            }
+            if (choiceName.length > 100) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") name is too long (${choiceName.length} characters). Choice names must be 100 characters or fewer.`,
+              );
+            }
+            if (choice.value === undefined || choice.value === null || choice.value === '') {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") is missing a value.`,
+              );
+            }
+            if (optType === 4 && (typeof choice.value !== 'number' || isNaN(choice.value as number))) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") value "${choice.value}" is not a valid integer. Integer options require whole number values.`,
+              );
+            }
+          }
         }
 
         const command = await registerSlashCommand({
@@ -4072,6 +4298,9 @@ export class DiscordBot implements INodeType {
       if (operation === 'fetch-message-history') {
         const client = await getClient(credentials);
         const channelId = this.getNodeParameter('historyChannelId', i) as string;
+        if (!channelId) {
+          throw new NodeOperationError(this.getNode(), 'Channel Name or ID is required for Fetch Message History');
+        }
         const limit = this.getNodeParameter('historyLimit', i, 50) as number;
         const before = this.getNodeParameter('historyBefore', i, '') as string;
         const after = this.getNodeParameter('historyAfter', i, '') as string;
@@ -4215,12 +4444,25 @@ export class DiscordBot implements INodeType {
 
         const modalCustomId = this.getNodeParameter('modalCustomId', i) as string;
         const modalTitle = this.getNodeParameter('modalTitle', i) as string;
-        const modalInputsParam = this.getNodeParameter('modalInputs', i, {}) as ModalUiParams['inputs'];
+        const modalComponentsJson = this.getNodeParameter('modalComponentsJson', i, '') as string;
 
-        const modal = buildModalFromUi(
-          { customId: modalCustomId, title: modalTitle, inputs: modalInputsParam },
-          this.getNode(),
-        );
+        let modal: object;
+        if (modalComponentsJson && modalComponentsJson.trim()) {
+          if (!modalCustomId?.trim()) {
+            throw new NodeOperationError(this.getNode(), 'Modal Custom ID is required');
+          }
+          if (!modalTitle?.trim()) {
+            throw new NodeOperationError(this.getNode(), 'Modal Title is required');
+          }
+          const components = parseJsonField<unknown[]>(modalComponentsJson, 'Modal Components JSON', this);
+          modal = { custom_id: modalCustomId, title: modalTitle, components };
+        } else {
+          const modalInputsParam = this.getNodeParameter('modalInputs', i, {}) as ModalUiParams['inputs'];
+          modal = buildModalFromUi(
+            { customId: modalCustomId, title: modalTitle, inputs: modalInputsParam },
+            this.getNode(),
+          );
+        }
 
         const rest = new REST({ version: '10' });
         await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
