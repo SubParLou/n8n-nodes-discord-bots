@@ -49,16 +49,8 @@ type TriggerType =
   | 'poll-vote-add'
   | 'poll-vote-remove';
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
-}
-
 function logNonCriticalError(context: string, error: unknown, details: Record<string, string | null> = {}): void {
-  const message = getErrorMessage(error);
+  const message = error instanceof Error ? error.message : String(error);
   console.warn(`[DiscordBotTrigger] ${context}: ${message}`, details);
 }
 
