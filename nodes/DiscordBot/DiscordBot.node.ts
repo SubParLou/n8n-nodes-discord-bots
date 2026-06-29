@@ -12,6 +12,7 @@ import type {
   ILoadOptionsFunctions,
   INode,
   INodeExecutionData,
+  INodeProperties,
   INodePropertyOptions,
   INodeType,
   INodeTypeDescription,
@@ -209,6 +210,499 @@ function resolveMessagePayload(
 
   return { embeds, components };
 }
+
+// ─── Shared builder field schemas ──────────────────────────────────────────
+// The send/update and respond-to-interaction operations expose the same
+// embed/button/select/layout builders. These constants hold the inner field
+// definitions so each builder is declared once and referenced from both places.
+
+const EMBED_FIELD_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Author Icon URL',
+    name: 'authorIconUrl',
+    type: 'string',
+    default: '',
+    description: 'Small icon shown to the left of the author name',
+  },
+  {
+    displayName: 'Author Name',
+    name: 'authorName',
+    type: 'string',
+    default: '',
+    description: 'Author name shown above the embed title (max 256 characters)',
+  },
+  {
+    displayName: 'Author URL',
+    name: 'authorUrl',
+    type: 'string',
+    default: '',
+    description: 'URL the author name links to',
+  },
+  {
+    displayName: 'Color',
+    name: 'color',
+    type: 'color',
+    default: '',
+    description: 'Embed sidebar color, for example #5865F2',
+  },
+  {
+    displayName: 'Description',
+    name: 'description',
+    type: 'string',
+    default: '',
+    description: 'Embed description (max 4096 characters)',
+  },
+  {
+    displayName: 'Embed Fields',
+    name: 'embedFields',
+    type: 'fixedCollection',
+    default: {},
+    placeholder: 'Add Field',
+    description: 'Up to 25 key-value fields inside the embed',
+    options: [
+      {
+        displayName: 'Field',
+        name: 'field',
+        values: [
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+            required: true,
+            description: 'Field title (max 256 characters)',
+          },
+          {
+            displayName: 'Value',
+            name: 'value',
+            type: 'string',
+            default: '',
+            required: true,
+            description: 'Field content (max 1024 characters)',
+          },
+          {
+            displayName: 'Inline',
+            name: 'inline',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to display this field inline alongside adjacent inline fields',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    displayName: 'Footer Icon URL',
+    name: 'footerIconUrl',
+    type: 'string',
+    default: '',
+    description: 'Small icon shown to the left of the footer text',
+  },
+  {
+    displayName: 'Footer Text',
+    name: 'footerText',
+    type: 'string',
+    default: '',
+    description: 'Text shown in the embed footer (max 2048 characters)',
+  },
+  {
+    displayName: 'Image URL',
+    name: 'imageUrl',
+    type: 'string',
+    default: '',
+    description: 'Large image displayed at the bottom of the embed',
+  },
+  {
+    displayName: 'Thumbnail Image URL',
+    name: 'thumbnailUrl',
+    type: 'string',
+    default: '',
+    description: 'Small image displayed in the upper-right corner of the embed',
+  },
+  {
+    displayName: 'Timestamp',
+    name: 'timestamp',
+    type: 'string',
+    default: '',
+    description: 'ISO 8601 timestamp shown in the footer, for example 2024-01-15T12:00:00.000Z. Leave empty to omit.',
+  },
+  {
+    displayName: 'Title',
+    name: 'title',
+    type: 'string',
+    default: '',
+    description: 'Embed title (max 256 characters)',
+  },
+  {
+    displayName: 'URL',
+    name: 'url',
+    type: 'string',
+    default: '',
+    description: 'URL the title links to',
+  },
+];
+
+const BUTTON_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Custom ID',
+    name: 'customId',
+    type: 'string',
+    default: '',
+    description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
+  },
+  {
+    displayName: 'Disabled',
+    name: 'disabled',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    displayName: 'Emoji Animated',
+    name: 'emojiAnimated',
+    type: 'boolean',
+    default: false,
+    description: 'Whether the custom emoji is animated',
+  },
+  {
+    displayName: 'Emoji ID',
+    name: 'emojiId',
+    type: 'string',
+    default: '',
+    description: 'Discord snowflake ID for a custom server emoji',
+  },
+  {
+    displayName: 'Emoji Name',
+    name: 'emojiName',
+    type: 'string',
+    default: '',
+    description: 'Unicode emoji or custom emoji name to show on the button, for example 🎉 or wave',
+  },
+  {
+    displayName: 'Label',
+    name: 'label',
+    type: 'string',
+    required: true,
+    default: '',
+  },
+  {
+    displayName: 'Style',
+    name: 'style',
+    type: 'options',
+    options: [
+      { name: 'Primary (Blue)', value: 1 },
+      { name: 'Secondary (Grey)', value: 2 },
+      { name: 'Success (Green)', value: 3 },
+      { name: 'Danger (Red)', value: 4 },
+      { name: 'Link', value: 5 },
+    ],
+    default: 1,
+  },
+  {
+    displayName: 'URL',
+    name: 'url',
+    type: 'string',
+    default: '',
+    description: 'Required for Link style buttons. Must be a valid URL.',
+  },
+];
+
+const STRING_SELECT_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Custom ID',
+    name: 'customId',
+    type: 'string',
+    required: true,
+    default: '',
+    description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+  },
+  {
+    displayName: 'Disabled',
+    name: 'disabled',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    displayName: 'Max Values',
+    name: 'maxValues',
+    type: 'number',
+    typeOptions: { minValue: 1, maxValue: 25 },
+    default: 1,
+    description: 'Maximum number of options the user can select (1–25)',
+  },
+  {
+    displayName: 'Min Values',
+    name: 'minValues',
+    type: 'number',
+    typeOptions: { minValue: 0, maxValue: 25 },
+    default: 1,
+    description: 'Minimum number of options the user must select (0–25)',
+  },
+  {
+    displayName: 'Placeholder',
+    name: 'placeholder',
+    type: 'string',
+    default: '',
+    description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
+  },
+  {
+    displayName: 'Select Options',
+    name: 'selectOptions',
+    type: 'fixedCollection',
+    typeOptions: { multipleValues: true },
+    required: true,
+    default: {},
+    placeholder: 'Add Option',
+    description: 'Up to 25 options shown in the dropdown',
+    options: [
+      {
+        displayName: 'Option',
+        name: 'option',
+        values: [
+          {
+            displayName: 'Default',
+            name: 'default',
+            type: 'boolean',
+            default: false,
+            description: 'Whether this option is pre-selected when the menu opens',
+          },
+          {
+            displayName: 'Description',
+            name: 'description',
+            type: 'string',
+            default: '',
+            description: 'Short description shown below the label (max 100 characters)',
+          },
+          {
+            displayName: 'Emoji Animated',
+            name: 'emojiAnimated',
+            type: 'boolean',
+            default: false,
+          },
+          {
+            displayName: 'Emoji ID',
+            name: 'emojiId',
+            type: 'string',
+            default: '',
+            description: 'Discord snowflake ID for a custom server emoji',
+          },
+          {
+            displayName: 'Emoji Name',
+            name: 'emojiName',
+            type: 'string',
+            default: '',
+            description: 'Unicode emoji or custom emoji name, for example 🎉',
+          },
+          {
+            displayName: 'Label',
+            name: 'label',
+            type: 'string',
+            required: true,
+            default: '',
+            description: 'Text shown in the dropdown for this option',
+          },
+          {
+            displayName: 'Value',
+            name: 'value',
+            type: 'string',
+            required: true,
+            default: '',
+            description: 'The value your bot receives when this option is selected',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const AUTO_SELECT_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Channel Types',
+    name: 'channelTypes',
+    type: 'multiOptions',
+    default: [],
+    options: [
+      { name: 'Announcement', value: 5 },
+      { name: 'Category', value: 4 },
+      { name: 'Forum', value: 15 },
+      { name: 'Media', value: 16 },
+      { name: 'Stage Voice', value: 13 },
+      { name: 'Text', value: 0 },
+      { name: 'Voice', value: 2 },
+    ],
+    description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
+  },
+  {
+    displayName: 'Custom ID',
+    name: 'customId',
+    type: 'string',
+    required: true,
+    default: '',
+    description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+  },
+  {
+    displayName: 'Disabled',
+    name: 'disabled',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    displayName: 'Max Values',
+    name: 'maxValues',
+    type: 'number',
+    typeOptions: { minValue: 1, maxValue: 25 },
+    default: 1,
+    description: 'Maximum number of items the user can select',
+  },
+  {
+    displayName: 'Min Values',
+    name: 'minValues',
+    type: 'number',
+    typeOptions: { minValue: 0, maxValue: 25 },
+    default: 1,
+    description: 'Minimum number of items the user must select',
+  },
+  {
+    displayName: 'Placeholder',
+    name: 'placeholder',
+    type: 'string',
+    default: '',
+    description: 'Greyed-out text shown when nothing is selected yet',
+  },
+  {
+    displayName: 'Type',
+    name: 'selectType',
+    type: 'options',
+    options: [
+      { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
+      { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
+      { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
+      { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
+    ],
+    default: 5,
+    description: 'The type of Discord auto-populated select menu',
+  },
+];
+
+const TEXT_DISPLAY_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Content',
+    name: 'content',
+    type: 'string',
+    default: '',
+    description: 'Markdown-formatted content displayed as a top-level text block',
+  },
+];
+
+const SECTION_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Title',
+    name: 'title',
+    type: 'string',
+    default: '',
+    description: 'Section title text',
+  },
+  {
+    displayName: 'Content',
+    name: 'content',
+    type: 'string',
+    default: '',
+    description: 'Section body text',
+  },
+  {
+    displayName: 'Thumbnail URL',
+    name: 'thumbnailUrl',
+    type: 'string',
+    default: '',
+    description: 'Optional thumbnail image URL for the section accessory',
+  },
+];
+
+const SEPARATOR_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Type',
+    name: 'type',
+    type: 'options',
+    options: [
+      { name: 'Horizontal', value: 'horizontal' },
+      { name: 'Emoji', value: 'emoji' },
+    ],
+    default: 'horizontal',
+  },
+  {
+    displayName: 'Emoji',
+    name: 'emoji',
+    type: 'string',
+    default: '',
+    description: 'Emoji shown for emoji separators',
+  },
+];
+
+const CONTAINER_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Title',
+    name: 'title',
+    type: 'string',
+    default: '',
+    description: 'Container title text',
+  },
+  {
+    displayName: 'Content',
+    name: 'content',
+    type: 'string',
+    default: '',
+    description: 'Container body text',
+  },
+  {
+    displayName: 'Accent Color',
+    name: 'accentColor',
+    type: 'color',
+    default: '',
+    description: 'Accent color for the container border',
+  },
+];
+
+const MEDIA_GALLERY_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Image URLs',
+    name: 'images',
+    type: 'fixedCollection',
+    typeOptions: { multipleValues: true },
+    default: {},
+    placeholder: 'Add Image',
+    options: [
+      {
+        displayName: 'Image',
+        name: 'image',
+        values: [
+          {
+            displayName: 'Image URL',
+            name: 'url',
+            type: 'string',
+            default: '',
+            description: 'URL of the image to include in the gallery',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const FILE_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'File URL',
+    name: 'fileUrl',
+    type: 'string',
+    default: '',
+    description: 'Attachment URL for the file component',
+  },
+  {
+    displayName: 'File Name',
+    name: 'fileName',
+    type: 'string',
+    default: '',
+    description: 'Optional display name for the attachment',
+  },
+];
 
 export class DiscordBot implements INodeType {
   description: INodeTypeDescription = {
@@ -534,131 +1028,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Embed',
             name: 'embed',
-            values: [
-											{
-												displayName: 'Author Icon URL',
-												name: 'authorIconUrl',
-												type: 'string',
-												default: '',
-												description: 'Small icon shown to the left of the author name',
-											},
-											{
-												displayName: 'Author Name',
-												name: 'authorName',
-												type: 'string',
-												default: '',
-												description: 'Author name shown above the embed title (max 256 characters)',
-											},
-											{
-												displayName: 'Author URL',
-												name: 'authorUrl',
-												type: 'string',
-												default: '',
-												description: 'URL the author name links to',
-											},
-											{
-												displayName: 'Color',
-												name: 'color',
-												type: 'color',
-												default: '',
-												description: 'Embed sidebar color, for example	#5865F2',
-											},
-											{
-												displayName: 'Description',
-												name: 'description',
-												type: 'string',
-												default: '',
-												description: 'Embed description (max 4096 characters)',
-											},
-											{
-												displayName: 'Embed Fields',
-												name: 'embedFields',
-												type: 'fixedCollection',
-												default: {},
-												placeholder: 'Add Field',
-												description: 'Up to 25 key-value fields inside the embed',
-												options: [
-													{
-														displayName: 'Field',
-														name: 'field',
-															values:	[
-																	{
-																		displayName: 'Name',
-																		name: 'name',
-																		type: 'string',
-																		default: '',
-																			required:	true,
-																		description: 'Field title (max 256 characters)',
-																	},
-																	{
-																		displayName: 'Value',
-																		name: 'value',
-																		type: 'string',
-																		default: '',
-																			required:	true,
-																		description: 'Field content (max 1024 characters)',
-																	},
-																	{
-																		displayName: 'Inline',
-																		name: 'inline',
-																		type: 'boolean',
-																		default: false,
-																		description: 'Whether to display this field inline alongside adjacent inline fields',
-																	},
-																]
-													},
-													]
-											},
-											{
-												displayName: 'Footer Icon URL',
-												name: 'footerIconUrl',
-												type: 'string',
-												default: '',
-												description: 'Small icon shown to the left of the footer text',
-											},
-											{
-												displayName: 'Footer Text',
-												name: 'footerText',
-												type: 'string',
-												default: '',
-												description: 'Text shown in the embed footer (max 2048 characters)',
-											},
-											{
-												displayName: 'Image URL',
-												name: 'imageUrl',
-												type: 'string',
-												default: '',
-												description: 'Large image displayed at the bottom of the embed',
-											},
-											{
-												displayName: 'Thumbnail Image URL',
-												name: 'thumbnailUrl',
-												type: 'string',
-												default: '',
-												description: 'Small image displayed in the upper-right corner of the embed',
-											},
-											{
-												displayName: 'Timestamp',
-												name: 'timestamp',
-												type: 'string',
-												default: '',
-												description: 'ISO 8601 timestamp shown in the footer, for example 2024-01-15T12:00:00.000Z. Leave empty to omit.',
-											},
-											{
-												displayName: 'Title',
-												name: 'title',
-												type: 'string',
-												default: '',
-												description: 'Embed title (max 256 characters)',
-											},
-											{
-												displayName: 'URL',
-												name: 'url',
-												type: 'string',
-												default: '',
-												description: 'URL the title links to',
-											},
-									],
+            values: EMBED_FIELD_PROPERTIES,
           },
         ],
       },
@@ -683,84 +1053,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Button',
             name: 'button',
-            values: [
-											{
-												displayName: 'Custom ID',
-												name: 'customId',
-												type: 'string',
-												default: '',
-												description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
-											},
-											{
-												displayName: 'Disabled',
-												name: 'disabled',
-												type: 'boolean',
-												default: false,
-											},
-											{
-												displayName: 'Emoji Animated',
-												name: 'emojiAnimated',
-												type: 'boolean',
-												default: false,
-												description: 'Whether the custom emoji is animated',
-											},
-											{
-												displayName: 'Emoji ID',
-												name: 'emojiId',
-												type: 'string',
-												default: '',
-												description: 'Discord snowflake ID for a custom server emoji',
-											},
-											{
-												displayName: 'Emoji Name',
-												name: 'emojiName',
-												type: 'string',
-												default: '',
-												description: 'Unicode emoji or custom emoji name to show on the button, for example	🎉	or wave',
-											},
-											{
-												displayName: 'Label',
-												name: 'label',
-												type: 'string',
-													required:	true,
-												default: '',
-											},
-											{
-												displayName: 'Style',
-												name: 'style',
-												type: 'options',
-												options: [
-													{
-														name: 'Primary (Blue)',
-														value: 1
-													},
-													{
-														name: 'Secondary (Grey)',
-														value: 2
-													},
-													{
-														name: 'Success (Green)',
-														value: 3
-													},
-													{
-														name: 'Danger (Red)',
-														value: 4
-													},
-													{
-														name: 'Link',
-														value: 5
-													},
-												],
-												default: 1
-											},
-											{
-												displayName: 'URL',
-												name: 'url',
-												type: 'string',
-												default: '',
-												description: 'Required for Link style buttons. Must be a valid URL.',
-											},
-									],
+            values: BUTTON_PROPERTIES,
           },
         ],
       },
@@ -785,113 +1078,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of options the user can select (1–25)',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of options the user must select (0–25)',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
-              },
-              {
-                displayName: 'Select Options',
-                name: 'selectOptions',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                required: true,
-                default: {},
-                placeholder: 'Add Option',
-                description: 'Up to 25 options shown in the dropdown',
-                options: [
-                  {
-                    displayName: 'Option',
-                    name: 'option',
-                    values: [
-                      {
-                        displayName: 'Default',
-                        name: 'default',
-                        type: 'boolean',
-                        default: false,
-                        description: 'Whether this option is pre-selected when the menu opens',
-                      },
-                      {
-                        displayName: 'Description',
-                        name: 'description',
-                        type: 'string',
-                        default: '',
-                        description: 'Short description shown below the label (max 100 characters)',
-                      },
-                      {
-                        displayName: 'Emoji Animated',
-                        name: 'emojiAnimated',
-                        type: 'boolean',
-                        default: false,
-                      },
-                      {
-                        displayName: 'Emoji ID',
-                        name: 'emojiId',
-                        type: 'string',
-                        default: '',
-                        description: 'Discord snowflake ID for a custom server emoji',
-                      },
-                      {
-                        displayName: 'Emoji Name',
-                        name: 'emojiName',
-                        type: 'string',
-                        default: '',
-                        description: 'Unicode emoji or custom emoji name, for example 🎉',
-                      },
-                      {
-                        displayName: 'Label',
-                        name: 'label',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'Text shown in the dropdown for this option',
-                      },
-                      {
-                        displayName: 'Value',
-                        name: 'value',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'The value your bot receives when this option is selected',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: STRING_SELECT_PROPERTIES,
           },
         ],
       },
@@ -916,74 +1103,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Channel Types',
-                name: 'channelTypes',
-                type: 'multiOptions',
-                default: [],
-                options: [
-                  { name: 'Announcement', value: 5 },
-                  { name: 'Category', value: 4 },
-                  { name: 'Forum', value: 15 },
-                  { name: 'Media', value: 16 },
-                  { name: 'Stage Voice', value: 13 },
-                  { name: 'Text', value: 0 },
-                  { name: 'Voice', value: 2 },
-                ],
-                description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
-              },
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of items the user can select',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of items the user must select',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet',
-              },
-              {
-                displayName: 'Type',
-                name: 'selectType',
-                type: 'options',
-                options: [
-                  { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
-                  { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
-                  { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
-                  { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
-                ],
-                default: 5,
-                description: 'The type of Discord auto-populated select menu',
-              },
-            ],
+            values: AUTO_SELECT_PROPERTIES,
           },
         ],
       },
@@ -1007,15 +1127,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Text Display',
             name: 'display',
-            values: [
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Markdown-formatted content displayed as a top-level text block',
-              },
-            ],
+            values: TEXT_DISPLAY_PROPERTIES,
           },
         ],
       },
@@ -1039,29 +1151,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Section',
             name: 'section',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Section title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Section body text',
-              },
-              {
-                displayName: 'Thumbnail URL',
-                name: 'thumbnailUrl',
-                type: 'string',
-                default: '',
-                description: 'Optional thumbnail image URL for the section accessory',
-              },
-            ],
+            values: SECTION_PROPERTIES,
           },
         ],
       },
@@ -1085,25 +1175,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Separator',
             name: 'separator',
-            values: [
-              {
-                displayName: 'Type',
-                name: 'type',
-                type: 'options',
-                options: [
-                  { name: 'Horizontal', value: 'horizontal' },
-                  { name: 'Emoji', value: 'emoji' },
-                ],
-                default: 'horizontal',
-              },
-              {
-                displayName: 'Emoji',
-                name: 'emoji',
-                type: 'string',
-                default: '',
-                description: 'Emoji shown for emoji separators',
-              },
-            ],
+            values: SEPARATOR_PROPERTIES,
           },
         ],
       },
@@ -1127,29 +1199,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Container',
             name: 'container',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Container title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Container body text',
-              },
-              {
-                displayName: 'Accent Color',
-                name: 'accentColor',
-                type: 'color',
-                default: '',
-                description: 'Accent color for the container border',
-              },
-            ],
+            values: CONTAINER_PROPERTIES,
           },
         ],
       },
@@ -1173,31 +1223,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Gallery',
             name: 'gallery',
-            values: [
-              {
-                displayName: 'Image URLs',
-                name: 'images',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                default: {},
-                placeholder: 'Add Image',
-                options: [
-                  {
-                    displayName: 'Image',
-                    name: 'image',
-                    values: [
-                      {
-                        displayName: 'Image URL',
-                        name: 'url',
-                        type: 'string',
-                        default: '',
-                        description: 'URL of the image to include in the gallery',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: MEDIA_GALLERY_PROPERTIES,
           },
         ],
       },
@@ -1221,22 +1247,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'File',
             name: 'file',
-            values: [
-              {
-                displayName: 'File URL',
-                name: 'fileUrl',
-                type: 'string',
-                default: '',
-                description: 'Attachment URL for the file component',
-              },
-              {
-                displayName: 'File Name',
-                name: 'fileName',
-                type: 'string',
-                default: '',
-                description: 'Optional display name for the attachment',
-              },
-            ],
+            values: FILE_PROPERTIES,
           },
         ],
       },
@@ -1308,130 +1319,7 @@ export class DiscordBot implements INodeType {
               {
                 displayName: 'Embed',
                 name: 'embed',
-                values: [
-													{
-														displayName: 'Author Icon URL',
-														name: 'authorIconUrl',
-														type: 'string',
-														default: '',
-														description: 'Small icon shown to the left of the author name',
-													},
-													{
-														displayName: 'Author Name',
-														name: 'authorName',
-														type: 'string',
-														default: '',
-														description: 'Author name shown above the embed title (max 256 characters)',
-													},
-													{
-														displayName: 'Author URL',
-														name: 'authorUrl',
-														type: 'string',
-														default: '',
-														description: 'URL the author name links to',
-													},
-													{
-														displayName: 'Color',
-														name: 'color',
-														type: 'color',
-														default: '',
-														description: 'Embed sidebar color, for example	#5865F2',
-													},
-													{
-														displayName: 'Description',
-														name: 'description',
-														type: 'string',
-														default: '',
-														description: 'Embed description (max 4096 characters)',
-													},
-													{
-														displayName: 'Embed Fields',
-														name: 'embedFields',
-														type: 'fixedCollection',
-														default: {},
-														placeholder: 'Add Field',
-														description: 'Up to 25 key-value fields inside the embed',
-														options: [
-																	{
-																		displayName: 'Field',
-																		name: 'field',
-																			values:	[
-																			{
-																				displayName: 'Name',
-																				name: 'name',
-																				type: 'string',
-																				default: '',
-																					required:	true,
-																				description: 'Field title (max 256 characters)',
-																			},
-																			{
-																				displayName: 'Value',
-																				name: 'value',
-																				type: 'string',
-																				default: '',
-																					required:	true,
-																				description: 'Field content (max 1024 characters)',
-																			},
-																			{
-																				displayName: 'Inline',
-																				name: 'inline',
-																				type: 'boolean',
-																				default: false,
-																			},
-																		]
-																	},
-															]
-													},
-													{
-														displayName: 'Footer Icon URL',
-														name: 'footerIconUrl',
-														type: 'string',
-														default: '',
-														description: 'Small icon shown to the left of the footer text',
-													},
-													{
-														displayName: 'Footer Text',
-														name: 'footerText',
-														type: 'string',
-														default: '',
-														description: 'Text shown in the embed footer (max 2048 characters)',
-													},
-													{
-														displayName: 'Image URL',
-														name: 'imageUrl',
-														type: 'string',
-														default: '',
-														description: 'Large image displayed at the bottom of the embed',
-													},
-													{
-														displayName: 'Thumbnail Image URL',
-														name: 'thumbnailUrl',
-														type: 'string',
-														default: '',
-														description: 'Small image displayed in the upper-right corner of the embed',
-													},
-													{
-														displayName: 'Timestamp',
-														name: 'timestamp',
-														type: 'string',
-														default: '',
-														description: 'ISO 8601 timestamp shown in the footer. Leave empty to omit.',
-													},
-													{
-														displayName: 'Title',
-														name: 'title',
-														type: 'string',
-														default: '',
-														description: 'Embed title (max 256 characters)',
-													},
-													{
-														displayName: 'URL',
-														name: 'url',
-														type: 'string',
-														default: '',
-														description: 'URL the title links to',
-													},
-													],
+                values: EMBED_FIELD_PROPERTIES,
               },
             ],
           },
@@ -1489,84 +1377,7 @@ export class DiscordBot implements INodeType {
               {
                 displayName: 'Button',
                 name: 'button',
-                values: [
-													{
-														displayName: 'Custom ID',
-														name: 'customId',
-														type: 'string',
-														default: '',
-														description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
-													},
-													{
-														displayName: 'Disabled',
-														name: 'disabled',
-														type: 'boolean',
-														default: false,
-													},
-													{
-														displayName: 'Emoji Animated',
-														name: 'emojiAnimated',
-														type: 'boolean',
-														default: false,
-														description: 'Whether the custom emoji is animated',
-													},
-													{
-														displayName: 'Emoji ID',
-														name: 'emojiId',
-														type: 'string',
-														default: '',
-														description: 'Discord snowflake ID for a custom server emoji',
-													},
-													{
-														displayName: 'Emoji Name',
-														name: 'emojiName',
-														type: 'string',
-														default: '',
-														description: 'Unicode emoji or custom emoji name to show on the button, for example	🎉	or wave',
-													},
-													{
-														displayName: 'Label',
-														name: 'label',
-														type: 'string',
-															required:	true,
-														default: '',
-													},
-													{
-														displayName: 'Style',
-														name: 'style',
-														type: 'options',
-														options: [
-																	{
-																		name: 'Primary (Blue)',
-																		value: 1
-																	},
-																	{
-																		name: 'Secondary (Grey)',
-																		value: 2
-																	},
-																	{
-																		name: 'Success (Green)',
-																		value: 3
-																	},
-																	{
-																		name: 'Danger (Red)',
-																		value: 4
-																	},
-																	{
-																		name: 'Link',
-																		value: 5
-																	},
-																],
-														default: 1
-													},
-													{
-														displayName: 'URL',
-														name: 'url',
-														type: 'string',
-														default: '',
-														description: 'Required for Link style buttons',
-													},
-													],
+                values: BUTTON_PROPERTIES,
               },
             ],
           },
@@ -1594,113 +1405,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of options the user can select (1–25)',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of options the user must select (0–25)',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
-              },
-              {
-                displayName: 'Select Options',
-                name: 'selectOptions',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                required: true,
-                default: {},
-                placeholder: 'Add Option',
-                description: 'Up to 25 options shown in the dropdown',
-                options: [
-                  {
-                    displayName: 'Option',
-                    name: 'option',
-                    values: [
-                      {
-                        displayName: 'Default',
-                        name: 'default',
-                        type: 'boolean',
-                        default: false,
-                        description: 'Whether this option is pre-selected when the menu opens',
-                      },
-                      {
-                        displayName: 'Description',
-                        name: 'description',
-                        type: 'string',
-                        default: '',
-                        description: 'Short description shown below the label (max 100 characters)',
-                      },
-                      {
-                        displayName: 'Emoji Animated',
-                        name: 'emojiAnimated',
-                        type: 'boolean',
-                        default: false,
-                      },
-                      {
-                        displayName: 'Emoji ID',
-                        name: 'emojiId',
-                        type: 'string',
-                        default: '',
-                        description: 'Discord snowflake ID for a custom server emoji',
-                      },
-                      {
-                        displayName: 'Emoji Name',
-                        name: 'emojiName',
-                        type: 'string',
-                        default: '',
-                        description: 'Unicode emoji or custom emoji name, for example 🎉',
-                      },
-                      {
-                        displayName: 'Label',
-                        name: 'label',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'Text shown in the dropdown for this option',
-                      },
-                      {
-                        displayName: 'Value',
-                        name: 'value',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'The value your bot receives when this option is selected',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: STRING_SELECT_PROPERTIES,
           },
         ],
       },
@@ -1725,74 +1430,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Channel Types',
-                name: 'channelTypes',
-                type: 'multiOptions',
-                default: [],
-                options: [
-                  { name: 'Announcement', value: 5 },
-                  { name: 'Category', value: 4 },
-                  { name: 'Forum', value: 15 },
-                  { name: 'Media', value: 16 },
-                  { name: 'Stage Voice', value: 13 },
-                  { name: 'Text', value: 0 },
-                  { name: 'Voice', value: 2 },
-                ],
-                description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
-              },
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of items the user can select',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of items the user must select',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet',
-              },
-              {
-                displayName: 'Type',
-                name: 'selectType',
-                type: 'options',
-                options: [
-                  { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
-                  { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
-                  { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
-                  { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
-                ],
-                default: 5,
-                description: 'The type of Discord auto-populated select menu',
-              },
-            ],
+            values: AUTO_SELECT_PROPERTIES,
           },
         ],
       },
@@ -1816,15 +1454,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Text Display',
             name: 'display',
-            values: [
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Markdown-formatted content displayed as a top-level text block',
-              },
-            ],
+            values: TEXT_DISPLAY_PROPERTIES,
           },
         ],
       },
@@ -1848,29 +1478,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Section',
             name: 'section',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Section title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Section body text',
-              },
-              {
-                displayName: 'Thumbnail URL',
-                name: 'thumbnailUrl',
-                type: 'string',
-                default: '',
-                description: 'Optional thumbnail image URL for the section accessory',
-              },
-            ],
+            values: SECTION_PROPERTIES,
           },
         ],
       },
@@ -1894,25 +1502,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Separator',
             name: 'separator',
-            values: [
-              {
-                displayName: 'Type',
-                name: 'type',
-                type: 'options',
-                options: [
-                  { name: 'Horizontal', value: 'horizontal' },
-                  { name: 'Emoji', value: 'emoji' },
-                ],
-                default: 'horizontal',
-              },
-              {
-                displayName: 'Emoji',
-                name: 'emoji',
-                type: 'string',
-                default: '',
-                description: 'Emoji shown for emoji separators',
-              },
-            ],
+            values: SEPARATOR_PROPERTIES,
           },
         ],
       },
@@ -1936,29 +1526,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Container',
             name: 'container',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Container title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Container body text',
-              },
-              {
-                displayName: 'Accent Color',
-                name: 'accentColor',
-                type: 'color',
-                default: '',
-                description: 'Accent color for the container border',
-              },
-            ],
+            values: CONTAINER_PROPERTIES,
           },
         ],
       },
@@ -1982,31 +1550,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Gallery',
             name: 'gallery',
-            values: [
-              {
-                displayName: 'Image URLs',
-                name: 'images',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                default: {},
-                placeholder: 'Add Image',
-                options: [
-                  {
-                    displayName: 'Image',
-                    name: 'image',
-                    values: [
-                      {
-                        displayName: 'Image URL',
-                        name: 'url',
-                        type: 'string',
-                        default: '',
-                        description: 'URL of the image to include in the gallery',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: MEDIA_GALLERY_PROPERTIES,
           },
         ],
       },
@@ -2030,22 +1574,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'File',
             name: 'file',
-            values: [
-              {
-                displayName: 'File URL',
-                name: 'fileUrl',
-                type: 'string',
-                default: '',
-                description: 'Attachment URL for the file component',
-              },
-              {
-                displayName: 'File Name',
-                name: 'fileName',
-                type: 'string',
-                default: '',
-                description: 'Optional display name for the attachment',
-              },
-            ],
+            values: FILE_PROPERTIES,
           },
         ],
       },
