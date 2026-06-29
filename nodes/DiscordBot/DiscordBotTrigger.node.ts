@@ -357,10 +357,19 @@ function buildInteractionPayload(interaction: Interaction) {
   }
 
   if (interaction.isModalSubmit()) {
-    const fields = interaction.fields.fields.map((f) => ({
-      customId: f.customId,
-      value: interaction.fields.getTextInputValue(f.customId) ?? null,
-    }));
+    const fields = interaction.fields.fields.map((f) => {
+      // Text inputs expose a string `value`; select menus (inside label
+      // components) expose `values`. Read defensively rather than calling
+      // getTextInputValue, which throws on any non-text-input field.
+      const component = f as { customId: string; value?: unknown; values?: unknown };
+      const value =
+        component.value !== undefined
+          ? component.value
+          : component.values !== undefined
+            ? component.values
+            : null;
+      return { customId: component.customId, value };
+    });
     return {
       ...base,
       type: 'modal-submit',

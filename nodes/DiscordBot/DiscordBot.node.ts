@@ -2077,17 +2077,17 @@ export class DiscordBot implements INodeType {
                 name: 'option',
                 values: [
                   {
-                    displayName: 'Option Name',
-                    name: 'name',
+                    displayName: 'Option Description',
+                    name: 'description',
                     type: 'string',
-                    description: 'Lowercase, no spaces (e.g. "username")',
                     required: true,
                     default: '',
                   },
                   {
-                    displayName: 'Option Description',
-                    name: 'description',
+                    displayName: 'Option Name',
+                    name: 'name',
                     type: 'string',
+                    description: 'Lowercase, no spaces (e.g. "username")',
                     required: true,
                     default: '',
                   },
@@ -2099,17 +2099,12 @@ export class DiscordBot implements INodeType {
                       { name: 'String', value: 3 },
                       { name: 'Integer', value: 4 },
                       { name: 'Boolean', value: 5 },
-                      { name: 'User', value: 7 },
-                      { name: 'Channel', value: 8 },
-                      { name: 'Role', value: 9 },
+                      { name: 'User', value: 6 },
+                      { name: 'Channel', value: 7 },
+                      { name: 'Role', value: 8 },
+                      { name: 'Mentionable', value: 9 },
                     ],
                     default: 3,
-                  },
-                  {
-                    displayName: 'Required',
-                    name: 'required',
-                    type: 'boolean',
-                    default: false,
                   },
                   {
                     displayName: 'Predefined Choices',
@@ -2142,6 +2137,12 @@ export class DiscordBot implements INodeType {
                         ],
                       },
                     ],
+                  },
+                  {
+                    displayName: 'Required',
+                    name: 'required',
+                    type: 'boolean',
+                    default: false,
                   },
                 ],
               },
@@ -3841,7 +3842,7 @@ export class DiscordBot implements INodeType {
 
       if (operation === 'delete-slash-command') {
         const commandId = this.getNodeParameter('deleteCommandId', i) as string;
-        const guildId = this.getNodeParameter('deleteCommandGuildId', i, '') as string;
+        const guildId = (this.getNodeParameter('deleteCommandGuildId', i, '') as string).trim();
 
         if (!commandId.trim()) {
           throw new NodeOperationError(this.getNode(), 'Command ID is required');
@@ -3869,7 +3870,7 @@ export class DiscordBot implements INodeType {
       }
 
       if (operation === 'list-slash-commands') {
-        const guildId = this.getNodeParameter('listCommandsGuildId', i, '') as string;
+        const guildId = (this.getNodeParameter('listCommandsGuildId', i, '') as string).trim();
 
         const commands = await listSlashCommands({
           token: credentials.token,
@@ -3983,7 +3984,7 @@ export class DiscordBot implements INodeType {
             if (rawChoices && rawChoices.length > 0) {
               base.choices = rawChoices.map((c) => ({
                 name: c.name,
-                value: opt.type === 4 ? parseInt(c.value, 10) : c.value,
+                value: opt.type === 4 ? Number(c.value) : c.value,
               }));
             }
             return base;
@@ -4014,6 +4015,12 @@ export class DiscordBot implements INodeType {
             throw new NodeOperationError(
               this.getNode(),
               `Command option ${optIdx + 1} has an invalid name "${optName}". Option names must be 1–32 characters and contain only lowercase letters, numbers, hyphens, or underscores.`,
+            );
+          }
+          if (optName !== optName.toLowerCase()) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") must be lowercase. Discord does not allow uppercase letters in option names.`,
             );
           }
           if (!optDesc) {
@@ -4057,7 +4064,7 @@ export class DiscordBot implements INodeType {
                 `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") is missing a value.`,
               );
             }
-            if (optType === 4 && (typeof choice.value !== 'number' || isNaN(choice.value as number))) {
+            if (optType === 4 && (typeof choice.value !== 'number' || !Number.isInteger(choice.value as number))) {
               throw new NodeOperationError(
                 this.getNode(),
                 `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") value "${choice.value}" is not a valid integer. Integer options require whole number values.`,
