@@ -15,6 +15,7 @@ For responding to interactions (slash commands, buttons, context menus, modals),
 - [Embed Builder](#embed-builder)
 - [Button Builder](#button-builder)
 - [Select Menu Builder](#select-menu-builder)
+- [Layout Block Builder](#layout-block-builder)
 - [Examples](#examples)
 
 ---
@@ -164,16 +165,61 @@ Each auto-populated select menu also supports Custom ID, Placeholder, Min/Max Va
 
 Available in Builder and Builder + Advanced JSON Merge modes.
 
-Discord Components v2 layout blocks are rendered as top-level message components rather than embeds. They support the following block types:
+Discord Components v2 layout blocks are rendered as top-level message components rather than embeds. They cannot be mixed with embeds — the node will reject the payload with a descriptive validation error if both are configured.
 
-- **Text Displays**: rich text content blocks.
-- **Sections**: title/content blocks with optional thumbnail accessory.
-- **Separators**: visual dividers between blocks.
-- **Containers**: grouped content blocks with optional accent color.
-- **Media Galleries**: up to 10 image items.
-- **Files**: inline attachment display blocks.
+### Text Display
 
-**Important:** embeds and Discord Components v2 layout blocks cannot be used together in the same message. If both are configured, the node will reject the payload with a descriptive validation error.
+A standalone block of markdown text.
+
+| Field | Description |
+|-------|-------------|
+| Content | Markdown-formatted text rendered as a top-level block |
+
+### Section
+
+A titled content block with an optional thumbnail image on the right.
+
+| Field | Description |
+|-------|-------------|
+| Title | Section title text |
+| Content | Section body text |
+| Thumbnail URL | Optional image URL displayed as a small thumbnail accessory |
+
+### Separator
+
+A visual divider inserted between blocks.
+
+| Field | Description |
+|-------|-------------|
+| Type | `Horizontal` (a line) or `Emoji` (an emoji character) |
+| Emoji | Emoji to display — only shown when Type is `Emoji` |
+
+### Container
+
+A grouped content block with an optional colored left border.
+
+| Field | Description |
+|-------|-------------|
+| Title | Container title text |
+| Content | Container body text |
+| Accent Color | Hex color for the container's left border (e.g. `#5865F2`) |
+
+### Media Gallery
+
+A gallery of up to 10 images displayed in a grid layout.
+
+| Field | Description |
+|-------|-------------|
+| Image URLs → Image URL | URL of each image to include in the gallery. Click **Add Image** to add more. |
+
+### File
+
+An inline attachment block that renders a file reference from a Discord attachment URL.
+
+| Field | Description |
+|-------|-------------|
+| File URL | Attachment URL (must be an existing Discord CDN attachment URL) |
+| File Name | Optional display name shown under the attachment |
 
 [^ Top](#messaging-operations)
 
@@ -192,8 +238,6 @@ Discord Components v2 layout blocks are rendered as top-level message components
 7. Execute the node - the message is rendered as layout blocks in Discord.
 
 > Note: If you also add content under **Embeds**, the node will reject the message because embeds and layout blocks are mutually exclusive.
-
-### Sending a simple embed (Builder mode)
 
 ### Sending a simple embed (Builder mode)
 

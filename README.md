@@ -95,6 +95,8 @@ This node includes a minimal telemetry feature to help me understand how many ac
 
 | Version | Highlights |
 |---|---|
+| **v1.9.1** | Refactor pass — ~600 lines removed (zero behaviour change): shared schema consts, helper extraction, dead code deletion |
+| **v1.9.0** | Discord Components v2 layout blocks (Text Display, Section, Separator, Container, Media Gallery, File) in Send Message, Update Message, and Respond to Interaction; slash command fixes (#21–#24) |
 | **v1.8.0** | Message Polls - send native polls and trigger on poll votes |
 | **v1.7.0** | Bot Presence & Status - set bot online status and activity text |
 | **v1.6.1** | Docs restructure - slim README with feature-area sub-docs; encoding fixes |
