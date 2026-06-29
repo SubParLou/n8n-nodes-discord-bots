@@ -5,6 +5,7 @@ import {
   buildAutoSelectsFromUi,
   buildComponentsFromUi,
   buildEmbedsFromUi,
+  buildModalFromUi,
   buildStringSelectsFromUi,
   parseEmbedColor,
   type AutoSelectMenuUiParams,
@@ -13,10 +14,12 @@ import {
   type EmbedUiParams,
   type FileUiParams,
   type MediaGalleryUiParams,
+  type ModalUiParams,
   type SectionUiParams,
   type SeparatorUiParams,
   type StringSelectMenuUiParams,
   type TextDisplayUiParams,
+  type TextInputUiParams,
 } from '../messageBuilder';
 
 // Minimal INode mock sufficient for NodeOperationError
@@ -533,5 +536,262 @@ describe('buildAllComponentsFromUi', () => {
     expect(() =>
       buildAllComponentsFromUi([], stringSelects, [], [], [], [], [], [], [], mockNode),
     ).not.toThrow();
+  });
+});
+
+// ─── Layout Block Builders (via buildAllComponentsFromUi) ─────────────────────
+
+describe('buildTextDisplaysFromUi (via buildAllComponentsFromUi)', () => {
+  it('throws when content is empty', () => {
+    expect(() =>
+      buildAllComponentsFromUi([], [], [], [{ content: '' }], [], [], [], [], [], mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('builds a text display with the correct type and content', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [{ content: 'Hello!' }], [], [], [], [], [], mockNode);
+    expect((block as any).type).toBe(10);
+    expect((block as any).content).toBe('Hello!');
+  });
+});
+
+describe('buildSectionsFromUi (via buildAllComponentsFromUi)', () => {
+  it('throws when title is empty', () => {
+    expect(() =>
+      buildAllComponentsFromUi([], [], [], [], [{ title: '', content: 'body', thumbnailUrl: '' }], [], [], [], [], mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('builds a section with type 9', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [{ title: 'My Title', content: '', thumbnailUrl: '' }], [], [], [], [], mockNode);
+    expect((block as any).type).toBe(9);
+  });
+
+  it('includes thumbnail accessory when thumbnailUrl is set', () => {
+    const [block] = buildAllComponentsFromUi(
+      [], [], [], [],
+      [{ title: 'T', content: '', thumbnailUrl: 'https://example.com/img.png' }],
+      [], [], [], [], mockNode,
+    );
+    expect((block as any).accessory).toEqual({ type: 11, media: { url: 'https://example.com/img.png' } });
+  });
+
+  it('omits accessory when thumbnailUrl is empty', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [{ title: 'T', content: '', thumbnailUrl: '' }], [], [], [], [], mockNode);
+    expect((block as any).accessory).toBeUndefined();
+  });
+});
+
+describe('buildSeparatorsFromUi (via buildAllComponentsFromUi)', () => {
+  it('builds a horizontal separator as type 14 with divider:true', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [{ type: 'horizontal' }], [], [], [], mockNode);
+    expect((block as any).type).toBe(14);
+    expect((block as any).divider).toBe(true);
+  });
+
+  it('builds an emoji separator as a type-10 text display', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [{ type: 'emoji', emoji: '⭐' }], [], [], [], mockNode);
+    expect((block as any).type).toBe(10);
+    expect((block as any).content).toBe('⭐');
+  });
+
+  it('defaults emoji separator content to ➖ when emoji is empty', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [{ type: 'emoji', emoji: '' }], [], [], [], mockNode);
+    expect((block as any).type).toBe(10);
+    expect((block as any).content).toBe('➖');
+  });
+});
+
+describe('buildContainersFromUi (via buildAllComponentsFromUi)', () => {
+  it('throws when title is empty', () => {
+    expect(() =>
+      buildAllComponentsFromUi([], [], [], [], [], [], [{ title: '', content: '', accentColor: '' }], [], [], mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('builds a container with type 17', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [], [{ title: 'T', content: '', accentColor: '' }], [], [], mockNode);
+    expect((block as any).type).toBe(17);
+  });
+
+  it('includes accent_color as an integer when accentColor is set', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [], [{ title: 'T', content: '', accentColor: '#ff0000' }], [], [], mockNode);
+    expect((block as any).accent_color).toBe(0xff0000);
+  });
+
+  it('omits accent_color when accentColor is empty', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [], [{ title: 'T', content: '', accentColor: '' }], [], [], mockNode);
+    expect((block as any).accent_color).toBeUndefined();
+  });
+});
+
+describe('buildMediaGalleriesFromUi (via buildAllComponentsFromUi)', () => {
+  it('throws when images array is empty', () => {
+    expect(() =>
+      buildAllComponentsFromUi([], [], [], [], [], [], [], [{ images: [] }], [], mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('throws when more than 10 images are provided', () => {
+    const images = Array.from({ length: 11 }, (_, i) => `https://example.com/${i}.png`);
+    expect(() =>
+      buildAllComponentsFromUi([], [], [], [], [], [], [], [{ images }], [], mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('builds a media gallery with type 12 and correct items', () => {
+    const [block] = buildAllComponentsFromUi(
+      [], [], [], [], [], [], [],
+      [{ images: ['https://example.com/a.png', 'https://example.com/b.png'] }],
+      [], mockNode,
+    );
+    expect((block as any).type).toBe(12);
+    expect((block as any).items).toEqual([
+      { media: { url: 'https://example.com/a.png' } },
+      { media: { url: 'https://example.com/b.png' } },
+    ]);
+  });
+});
+
+describe('buildFilesFromUi (via buildAllComponentsFromUi)', () => {
+  it('throws when fileUrl is empty', () => {
+    expect(() =>
+      buildAllComponentsFromUi([], [], [], [], [], [], [], [], [{ fileUrl: '', fileName: '' }], mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('builds a file component with type 13 and the correct url', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [], [], [], [{ fileUrl: 'https://cdn.discordapp.com/file.txt', fileName: '' }], mockNode);
+    expect((block as any).type).toBe(13);
+    expect((block as any).file).toEqual({ url: 'https://cdn.discordapp.com/file.txt' });
+  });
+
+  it('includes name when fileName is set', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [], [], [], [{ fileUrl: 'https://cdn.discordapp.com/file.txt', fileName: 'report.txt' }], mockNode);
+    expect((block as any).name).toBe('report.txt');
+  });
+
+  it('omits name when fileName is empty', () => {
+    const [block] = buildAllComponentsFromUi([], [], [], [], [], [], [], [], [{ fileUrl: 'https://cdn.discordapp.com/file.txt', fileName: '' }], mockNode);
+    expect((block as any).name).toBeUndefined();
+  });
+});
+
+// ─── buildModalFromUi ─────────────────────────────────────────────────────────
+
+function makeModalInput(overrides: Partial<TextInputUiParams> = {}): TextInputUiParams {
+  return {
+    customId: 'my-input',
+    label: 'My Label',
+    style: 1,
+    placeholder: '',
+    value: '',
+    minLength: 0,
+    maxLength: 0,
+    required: true,
+    ...overrides,
+  };
+}
+
+function makeModal(overrides: Partial<ModalUiParams> = {}): ModalUiParams {
+  return {
+    customId: 'my-modal',
+    title: 'My Modal',
+    inputs: { input: [makeModalInput()] },
+    ...overrides,
+  };
+}
+
+describe('buildModalFromUi', () => {
+  it('throws when customId is empty', () => {
+    expect(() => buildModalFromUi(makeModal({ customId: '' }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when title is empty', () => {
+    expect(() => buildModalFromUi(makeModal({ title: '' }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when title exceeds 45 characters', () => {
+    expect(() => buildModalFromUi(makeModal({ title: 'a'.repeat(46) }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when no inputs are provided', () => {
+    expect(() => buildModalFromUi(makeModal({ inputs: { input: [] } }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when more than 5 inputs are provided', () => {
+    const inputs = Array.from({ length: 6 }, (_, i) => makeModalInput({ customId: `input-${i}`, label: `Label ${i}` }));
+    expect(() => buildModalFromUi(makeModal({ inputs: { input: inputs } }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when an input has an empty customId', () => {
+    expect(() => buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ customId: '' })] } }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when an input has an empty label', () => {
+    expect(() => buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ label: '' })] } }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when an input label exceeds 45 characters', () => {
+    expect(() => buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ label: 'a'.repeat(46) })] } }), mockNode)).toThrow(NodeOperationError);
+  });
+
+  it('throws when an input placeholder exceeds 100 characters', () => {
+    expect(() =>
+      buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ placeholder: 'a'.repeat(101) })] } }), mockNode),
+    ).toThrow(NodeOperationError);
+  });
+
+  it('builds a valid modal object with the expected shape', () => {
+    const result = buildModalFromUi(makeModal(), mockNode);
+    expect(result).toEqual({
+      custom_id: 'my-modal',
+      title: 'My Modal',
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 4,
+              custom_id: 'my-input',
+              label: 'My Label',
+              style: 1,
+              required: true,
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('includes placeholder when set', () => {
+    const result = buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ placeholder: 'Enter text' })] } }), mockNode) as any;
+    expect(result.components[0].components[0].placeholder).toBe('Enter text');
+  });
+
+  it('includes min_length when greater than 0', () => {
+    const result = buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ minLength: 5 })] } }), mockNode) as any;
+    expect(result.components[0].components[0].min_length).toBe(5);
+  });
+
+  it('includes max_length when greater than 0', () => {
+    const result = buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ maxLength: 200 })] } }), mockNode) as any;
+    expect(result.components[0].components[0].max_length).toBe(200);
+  });
+
+  it('omits min_length and max_length when 0', () => {
+    const result = buildModalFromUi(makeModal(), mockNode) as any;
+    expect(result.components[0].components[0].min_length).toBeUndefined();
+    expect(result.components[0].components[0].max_length).toBeUndefined();
+  });
+
+  it('sets required:false when specified', () => {
+    const result = buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ required: false })] } }), mockNode) as any;
+    expect(result.components[0].components[0].required).toBe(false);
+  });
+
+  it('sets paragraph style (2) when specified', () => {
+    const result = buildModalFromUi(makeModal({ inputs: { input: [makeModalInput({ style: 2 })] } }), mockNode) as any;
+    expect(result.components[0].components[0].style).toBe(2);
   });
 });

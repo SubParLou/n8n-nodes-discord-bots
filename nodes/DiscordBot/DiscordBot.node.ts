@@ -5,19 +5,23 @@ import {
   type APIEmbed,
   type APIActionRowComponent,
   type APIMessageTopLevelComponent,
+  type Client,
 } from 'discord.js';
 import type {
   IExecuteFunctions,
   ILoadOptionsFunctions,
   INode,
   INodeExecutionData,
+  INodeProperties,
   INodePropertyOptions,
   INodeType,
   INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import {
+  deleteSlashCommand,
   getClient,
+  listSlashCommands,
   loadChannelOptions,
   loadGuildOptions,
   registerContextMenuCommand,
@@ -45,6 +49,8 @@ import {
 type Operation =
   | 'send-message'
   | 'update-message'
+  | 'delete-slash-command'
+  | 'list-slash-commands'
   | 'register-context-menu-command'
   | 'register-slash-command'
   | 'respond-to-interaction'
@@ -109,6 +115,595 @@ function isAlreadyAcknowledgedInteractionError(error: unknown): boolean {
   return /already been acknowledged/i.test(message);
 }
 
+/**
+ * Build a loadOptions method that lists channels for the guilds selected in the
+ * given parameter. The channel-selection fields across operations differ only
+ * by which guild-IDs parameter they depend on.
+ */
+function channelLoader(guildParam: string) {
+  return async function (this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+    const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+    const guildIds = this.getNodeParameter(guildParam, 0) as string[];
+    if (!guildIds.length) {
+      throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+    }
+    return loadChannelOptions(credentials, guildIds);
+  };
+}
+
+/**
+ * Fetch a message from a text-based channel, validating the channel supports
+ * messages. Shared by the message-management operations that target a single
+ * message by channel + message ID.
+ */
+async function fetchTextChannelMessage(
+  client: Client,
+  channelId: string,
+  messageId: string,
+  node: INode,
+): Promise<any> {
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || !channel.isTextBased() || !('messages' in channel)) {
+    throw new NodeOperationError(node, `Channel ${channelId} is not a text channel`);
+  }
+  return (channel as any).messages.fetch(messageId);
+}
+
+/**
+ * Resolve embeds and components from the shared message-builder parameters
+ * (Raw JSON / Builder / Builder + Advanced JSON Merge). Used by send-message,
+ * send-message-with-poll, and update-message, which expose identical fields.
+ */
+function resolveMessagePayload(
+  ctx: IExecuteFunctions,
+  i: number,
+): { embeds: APIEmbed[]; components: APIMessageTopLevelComponent[] } {
+  const payloadMode = ctx.getNodeParameter('payloadMode', i, 'builder') as
+    | 'builder'
+    | 'raw-json'
+    | 'builder-merge';
+
+  if (payloadMode === 'raw-json') {
+    const embedsJson = ctx.getNodeParameter('embedsJson', i, '[]') as string;
+    const componentsJson = ctx.getNodeParameter('componentsJson', i, '[]') as string;
+    return {
+      embeds: parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', ctx),
+      components: parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', ctx),
+    };
+  }
+
+  const node = ctx.getNode();
+  const embedBuilderParam = ctx.getNodeParameter('embedBuilder', i, {}) as { embed?: EmbedUiParams[] };
+  const buttonBuilderParam = ctx.getNodeParameter('buttonBuilder', i, {}) as { button?: ButtonUiParams[] };
+  const stringSelectParam = ctx.getNodeParameter('stringSelectBuilder', i, {}) as { select?: StringSelectMenuUiParams[] };
+  const autoSelectParam = ctx.getNodeParameter('autoSelectBuilder', i, {}) as { select?: AutoSelectMenuUiParams[] };
+  const textDisplayParam = ctx.getNodeParameter('textDisplayBuilder', i, {}) as { display?: TextDisplayUiParams[] };
+  const sectionParam = ctx.getNodeParameter('sectionBuilder', i, {}) as { section?: SectionUiParams[] };
+  const separatorParam = ctx.getNodeParameter('separatorBuilder', i, {}) as { separator?: SeparatorUiParams[] };
+  const containerParam = ctx.getNodeParameter('containerBuilder', i, {}) as { container?: ContainerUiParams[] };
+  const mediaGalleryParam = ctx.getNodeParameter('mediaGalleryBuilder', i, {}) as { gallery?: MediaGalleryUiParams[] };
+  const fileParam = ctx.getNodeParameter('fileBuilder', i, {}) as { file?: FileUiParams[] };
+
+  let embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], node);
+  let components = buildAllComponentsFromUi(
+    buttonBuilderParam.button ?? [],
+    stringSelectParam.select ?? [],
+    autoSelectParam.select ?? [],
+    textDisplayParam.display ?? [],
+    sectionParam.section ?? [],
+    separatorParam.separator ?? [],
+    containerParam.container ?? [],
+    mediaGalleryParam.gallery ?? [],
+    fileParam.file ?? [],
+    node,
+  );
+
+  if (payloadMode === 'builder-merge') {
+    const embedsJson = ctx.getNodeParameter('embedsJson', i, '[]') as string;
+    const componentsJson = ctx.getNodeParameter('componentsJson', i, '[]') as string;
+    embeds = [...embeds, ...parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', ctx)];
+    components = [
+      ...components,
+      ...parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', ctx),
+    ];
+  }
+
+  return { embeds, components };
+}
+
+// ─── Shared builder field schemas ──────────────────────────────────────────
+// The send/update and respond-to-interaction operations expose the same
+// embed/button/select/layout builders. These constants hold the inner field
+// definitions so each builder is declared once and referenced from both places.
+
+const EMBED_FIELD_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Author Icon URL',
+    name: 'authorIconUrl',
+    type: 'string',
+    default: '',
+    description: 'Small icon shown to the left of the author name',
+  },
+  {
+    displayName: 'Author Name',
+    name: 'authorName',
+    type: 'string',
+    default: '',
+    description: 'Author name shown above the embed title (max 256 characters)',
+  },
+  {
+    displayName: 'Author URL',
+    name: 'authorUrl',
+    type: 'string',
+    default: '',
+    description: 'URL the author name links to',
+  },
+  {
+    displayName: 'Color',
+    name: 'color',
+    type: 'color',
+    default: '',
+    description: 'Embed sidebar color, for example #5865F2',
+  },
+  {
+    displayName: 'Description',
+    name: 'description',
+    type: 'string',
+    default: '',
+    description: 'Embed description (max 4096 characters)',
+  },
+  {
+    displayName: 'Embed Fields',
+    name: 'embedFields',
+    type: 'fixedCollection',
+    default: {},
+    placeholder: 'Add Field',
+    description: 'Up to 25 key-value fields inside the embed',
+    options: [
+      {
+        displayName: 'Field',
+        name: 'field',
+        values: [
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+            required: true,
+            description: 'Field title (max 256 characters)',
+          },
+          {
+            displayName: 'Value',
+            name: 'value',
+            type: 'string',
+            default: '',
+            required: true,
+            description: 'Field content (max 1024 characters)',
+          },
+          {
+            displayName: 'Inline',
+            name: 'inline',
+            type: 'boolean',
+            default: false,
+            description: 'Whether to display this field inline alongside adjacent inline fields',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    displayName: 'Footer Icon URL',
+    name: 'footerIconUrl',
+    type: 'string',
+    default: '',
+    description: 'Small icon shown to the left of the footer text',
+  },
+  {
+    displayName: 'Footer Text',
+    name: 'footerText',
+    type: 'string',
+    default: '',
+    description: 'Text shown in the embed footer (max 2048 characters)',
+  },
+  {
+    displayName: 'Image URL',
+    name: 'imageUrl',
+    type: 'string',
+    default: '',
+    description: 'Large image displayed at the bottom of the embed',
+  },
+  {
+    displayName: 'Thumbnail Image URL',
+    name: 'thumbnailUrl',
+    type: 'string',
+    default: '',
+    description: 'Small image displayed in the upper-right corner of the embed',
+  },
+  {
+    displayName: 'Timestamp',
+    name: 'timestamp',
+    type: 'string',
+    default: '',
+    description: 'ISO 8601 timestamp shown in the footer, for example 2024-01-15T12:00:00.000Z. Leave empty to omit.',
+  },
+  {
+    displayName: 'Title',
+    name: 'title',
+    type: 'string',
+    default: '',
+    description: 'Embed title (max 256 characters)',
+  },
+  {
+    displayName: 'URL',
+    name: 'url',
+    type: 'string',
+    default: '',
+    description: 'URL the title links to',
+  },
+];
+
+const BUTTON_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Custom ID',
+    name: 'customId',
+    type: 'string',
+    default: '',
+    description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
+  },
+  {
+    displayName: 'Disabled',
+    name: 'disabled',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    displayName: 'Emoji Animated',
+    name: 'emojiAnimated',
+    type: 'boolean',
+    default: false,
+    description: 'Whether the custom emoji is animated',
+  },
+  {
+    displayName: 'Emoji ID',
+    name: 'emojiId',
+    type: 'string',
+    default: '',
+    description: 'Discord snowflake ID for a custom server emoji',
+  },
+  {
+    displayName: 'Emoji Name',
+    name: 'emojiName',
+    type: 'string',
+    default: '',
+    description: 'Unicode emoji or custom emoji name to show on the button, for example 🎉 or wave',
+  },
+  {
+    displayName: 'Label',
+    name: 'label',
+    type: 'string',
+    required: true,
+    default: '',
+  },
+  {
+    displayName: 'Style',
+    name: 'style',
+    type: 'options',
+    options: [
+      { name: 'Primary (Blue)', value: 1 },
+      { name: 'Secondary (Grey)', value: 2 },
+      { name: 'Success (Green)', value: 3 },
+      { name: 'Danger (Red)', value: 4 },
+      { name: 'Link', value: 5 },
+    ],
+    default: 1,
+  },
+  {
+    displayName: 'URL',
+    name: 'url',
+    type: 'string',
+    default: '',
+    description: 'Required for Link style buttons. Must be a valid URL.',
+  },
+];
+
+const STRING_SELECT_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Custom ID',
+    name: 'customId',
+    type: 'string',
+    required: true,
+    default: '',
+    description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+  },
+  {
+    displayName: 'Disabled',
+    name: 'disabled',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    displayName: 'Max Values',
+    name: 'maxValues',
+    type: 'number',
+    typeOptions: { minValue: 1, maxValue: 25 },
+    default: 1,
+    description: 'Maximum number of options the user can select (1–25)',
+  },
+  {
+    displayName: 'Min Values',
+    name: 'minValues',
+    type: 'number',
+    typeOptions: { minValue: 0, maxValue: 25 },
+    default: 1,
+    description: 'Minimum number of options the user must select (0–25)',
+  },
+  {
+    displayName: 'Placeholder',
+    name: 'placeholder',
+    type: 'string',
+    default: '',
+    description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
+  },
+  {
+    displayName: 'Select Options',
+    name: 'selectOptions',
+    type: 'fixedCollection',
+    typeOptions: { multipleValues: true },
+    required: true,
+    default: {},
+    placeholder: 'Add Option',
+    description: 'Up to 25 options shown in the dropdown',
+    options: [
+      {
+        displayName: 'Option',
+        name: 'option',
+        values: [
+          {
+            displayName: 'Default',
+            name: 'default',
+            type: 'boolean',
+            default: false,
+            description: 'Whether this option is pre-selected when the menu opens',
+          },
+          {
+            displayName: 'Description',
+            name: 'description',
+            type: 'string',
+            default: '',
+            description: 'Short description shown below the label (max 100 characters)',
+          },
+          {
+            displayName: 'Emoji Animated',
+            name: 'emojiAnimated',
+            type: 'boolean',
+            default: false,
+          },
+          {
+            displayName: 'Emoji ID',
+            name: 'emojiId',
+            type: 'string',
+            default: '',
+            description: 'Discord snowflake ID for a custom server emoji',
+          },
+          {
+            displayName: 'Emoji Name',
+            name: 'emojiName',
+            type: 'string',
+            default: '',
+            description: 'Unicode emoji or custom emoji name, for example 🎉',
+          },
+          {
+            displayName: 'Label',
+            name: 'label',
+            type: 'string',
+            required: true,
+            default: '',
+            description: 'Text shown in the dropdown for this option',
+          },
+          {
+            displayName: 'Value',
+            name: 'value',
+            type: 'string',
+            required: true,
+            default: '',
+            description: 'The value your bot receives when this option is selected',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const AUTO_SELECT_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Channel Types',
+    name: 'channelTypes',
+    type: 'multiOptions',
+    default: [],
+    options: [
+      { name: 'Announcement', value: 5 },
+      { name: 'Category', value: 4 },
+      { name: 'Forum', value: 15 },
+      { name: 'Media', value: 16 },
+      { name: 'Stage Voice', value: 13 },
+      { name: 'Text', value: 0 },
+      { name: 'Voice', value: 2 },
+    ],
+    description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
+  },
+  {
+    displayName: 'Custom ID',
+    name: 'customId',
+    type: 'string',
+    required: true,
+    default: '',
+    description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
+  },
+  {
+    displayName: 'Disabled',
+    name: 'disabled',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    displayName: 'Max Values',
+    name: 'maxValues',
+    type: 'number',
+    typeOptions: { minValue: 1, maxValue: 25 },
+    default: 1,
+    description: 'Maximum number of items the user can select',
+  },
+  {
+    displayName: 'Min Values',
+    name: 'minValues',
+    type: 'number',
+    typeOptions: { minValue: 0, maxValue: 25 },
+    default: 1,
+    description: 'Minimum number of items the user must select',
+  },
+  {
+    displayName: 'Placeholder',
+    name: 'placeholder',
+    type: 'string',
+    default: '',
+    description: 'Greyed-out text shown when nothing is selected yet',
+  },
+  {
+    displayName: 'Type',
+    name: 'selectType',
+    type: 'options',
+    options: [
+      { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
+      { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
+      { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
+      { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
+    ],
+    default: 5,
+    description: 'The type of Discord auto-populated select menu',
+  },
+];
+
+const TEXT_DISPLAY_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Content',
+    name: 'content',
+    type: 'string',
+    default: '',
+    description: 'Markdown-formatted content displayed as a top-level text block',
+  },
+];
+
+const SECTION_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Title',
+    name: 'title',
+    type: 'string',
+    default: '',
+    description: 'Section title text',
+  },
+  {
+    displayName: 'Content',
+    name: 'content',
+    type: 'string',
+    default: '',
+    description: 'Section body text',
+  },
+  {
+    displayName: 'Thumbnail URL',
+    name: 'thumbnailUrl',
+    type: 'string',
+    default: '',
+    description: 'Optional thumbnail image URL for the section accessory',
+  },
+];
+
+const SEPARATOR_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Type',
+    name: 'type',
+    type: 'options',
+    options: [
+      { name: 'Horizontal', value: 'horizontal' },
+      { name: 'Emoji', value: 'emoji' },
+    ],
+    default: 'horizontal',
+  },
+  {
+    displayName: 'Emoji',
+    name: 'emoji',
+    type: 'string',
+    default: '',
+    description: 'Emoji shown for emoji separators',
+  },
+];
+
+const CONTAINER_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Title',
+    name: 'title',
+    type: 'string',
+    default: '',
+    description: 'Container title text',
+  },
+  {
+    displayName: 'Content',
+    name: 'content',
+    type: 'string',
+    default: '',
+    description: 'Container body text',
+  },
+  {
+    displayName: 'Accent Color',
+    name: 'accentColor',
+    type: 'color',
+    default: '',
+    description: 'Accent color for the container border',
+  },
+];
+
+const MEDIA_GALLERY_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'Image URLs',
+    name: 'images',
+    type: 'fixedCollection',
+    typeOptions: { multipleValues: true },
+    default: {},
+    placeholder: 'Add Image',
+    options: [
+      {
+        displayName: 'Image',
+        name: 'image',
+        values: [
+          {
+            displayName: 'Image URL',
+            name: 'url',
+            type: 'string',
+            default: '',
+            description: 'URL of the image to include in the gallery',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const FILE_PROPERTIES: INodeProperties[] = [
+  {
+    displayName: 'File URL',
+    name: 'fileUrl',
+    type: 'string',
+    default: '',
+    description: 'Attachment URL for the file component',
+  },
+  {
+    displayName: 'File Name',
+    name: 'fileName',
+    type: 'string',
+    default: '',
+    description: 'Optional display name for the attachment',
+  },
+];
+
 export class DiscordBot implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Discord Bot',
@@ -152,6 +747,7 @@ export class DiscordBot implements INodeType {
           { name: 'Delete Message', value: 'delete-message' },
           { name: 'Delete Role', value: 'delete-role' },
           { name: 'Delete Scheduled Event', value: 'delete-scheduled-event' },
+          { name: 'Delete Slash Command', value: 'delete-slash-command' },
           { name: 'Edit Channel', value: 'edit-channel' },
           { name: 'Edit Role', value: 'edit-role' },
           { name: 'Edit Scheduled Event', value: 'edit-scheduled-event' },
@@ -161,6 +757,7 @@ export class DiscordBot implements INodeType {
           { name: 'Fetch Message History', value: 'fetch-message-history' },
           { name: 'Kick Member', value: 'kick-member' },
           { name: 'List Scheduled Events', value: 'list-scheduled-events' },
+          { name: 'List Slash Commands', value: 'list-slash-commands' },
           { name: 'Pin Message', value: 'pin-message' },
           { name: 'Register Context Menu Command', value: 'register-context-menu-command' },
           { name: 'Register Slash Command', value: 'register-slash-command' },
@@ -431,131 +1028,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Embed',
             name: 'embed',
-            values: [
-											{
-												displayName: 'Author Icon URL',
-												name: 'authorIconUrl',
-												type: 'string',
-												default: '',
-												description: 'Small icon shown to the left of the author name',
-											},
-											{
-												displayName: 'Author Name',
-												name: 'authorName',
-												type: 'string',
-												default: '',
-												description: 'Author name shown above the embed title (max 256 characters)',
-											},
-											{
-												displayName: 'Author URL',
-												name: 'authorUrl',
-												type: 'string',
-												default: '',
-												description: 'URL the author name links to',
-											},
-											{
-												displayName: 'Color',
-												name: 'color',
-												type: 'color',
-												default: '',
-												description: 'Embed sidebar color, for example	#5865F2',
-											},
-											{
-												displayName: 'Description',
-												name: 'description',
-												type: 'string',
-												default: '',
-												description: 'Embed description (max 4096 characters)',
-											},
-											{
-												displayName: 'Embed Fields',
-												name: 'embedFields',
-												type: 'fixedCollection',
-												default: {},
-												placeholder: 'Add Field',
-												description: 'Up to 25 key-value fields inside the embed',
-												options: [
-													{
-														displayName: 'Field',
-														name: 'field',
-															values:	[
-																	{
-																		displayName: 'Name',
-																		name: 'name',
-																		type: 'string',
-																		default: '',
-																			required:	true,
-																		description: 'Field title (max 256 characters)',
-																	},
-																	{
-																		displayName: 'Value',
-																		name: 'value',
-																		type: 'string',
-																		default: '',
-																			required:	true,
-																		description: 'Field content (max 1024 characters)',
-																	},
-																	{
-																		displayName: 'Inline',
-																		name: 'inline',
-																		type: 'boolean',
-																		default: false,
-																		description: 'Whether to display this field inline alongside adjacent inline fields',
-																	},
-																]
-													},
-													]
-											},
-											{
-												displayName: 'Footer Icon URL',
-												name: 'footerIconUrl',
-												type: 'string',
-												default: '',
-												description: 'Small icon shown to the left of the footer text',
-											},
-											{
-												displayName: 'Footer Text',
-												name: 'footerText',
-												type: 'string',
-												default: '',
-												description: 'Text shown in the embed footer (max 2048 characters)',
-											},
-											{
-												displayName: 'Image URL',
-												name: 'imageUrl',
-												type: 'string',
-												default: '',
-												description: 'Large image displayed at the bottom of the embed',
-											},
-											{
-												displayName: 'Thumbnail Image URL',
-												name: 'thumbnailUrl',
-												type: 'string',
-												default: '',
-												description: 'Small image displayed in the upper-right corner of the embed',
-											},
-											{
-												displayName: 'Timestamp',
-												name: 'timestamp',
-												type: 'string',
-												default: '',
-												description: 'ISO 8601 timestamp shown in the footer, for example 2024-01-15T12:00:00.000Z. Leave empty to omit.',
-											},
-											{
-												displayName: 'Title',
-												name: 'title',
-												type: 'string',
-												default: '',
-												description: 'Embed title (max 256 characters)',
-											},
-											{
-												displayName: 'URL',
-												name: 'url',
-												type: 'string',
-												default: '',
-												description: 'URL the title links to',
-											},
-									],
+            values: EMBED_FIELD_PROPERTIES,
           },
         ],
       },
@@ -580,84 +1053,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Button',
             name: 'button',
-            values: [
-											{
-												displayName: 'Custom ID',
-												name: 'customId',
-												type: 'string',
-												default: '',
-												description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
-											},
-											{
-												displayName: 'Disabled',
-												name: 'disabled',
-												type: 'boolean',
-												default: false,
-											},
-											{
-												displayName: 'Emoji Animated',
-												name: 'emojiAnimated',
-												type: 'boolean',
-												default: false,
-												description: 'Whether the custom emoji is animated',
-											},
-											{
-												displayName: 'Emoji ID',
-												name: 'emojiId',
-												type: 'string',
-												default: '',
-												description: 'Discord snowflake ID for a custom server emoji',
-											},
-											{
-												displayName: 'Emoji Name',
-												name: 'emojiName',
-												type: 'string',
-												default: '',
-												description: 'Unicode emoji or custom emoji name to show on the button, for example	🎉	or wave',
-											},
-											{
-												displayName: 'Label',
-												name: 'label',
-												type: 'string',
-													required:	true,
-												default: '',
-											},
-											{
-												displayName: 'Style',
-												name: 'style',
-												type: 'options',
-												options: [
-													{
-														name: 'Primary (Blue)',
-														value: 1
-													},
-													{
-														name: 'Secondary (Grey)',
-														value: 2
-													},
-													{
-														name: 'Success (Green)',
-														value: 3
-													},
-													{
-														name: 'Danger (Red)',
-														value: 4
-													},
-													{
-														name: 'Link',
-														value: 5
-													},
-												],
-												default: 1
-											},
-											{
-												displayName: 'URL',
-												name: 'url',
-												type: 'string',
-												default: '',
-												description: 'Required for Link style buttons. Must be a valid URL.',
-											},
-									],
+            values: BUTTON_PROPERTIES,
           },
         ],
       },
@@ -682,113 +1078,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of options the user can select (1–25)',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of options the user must select (0–25)',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
-              },
-              {
-                displayName: 'Select Options',
-                name: 'selectOptions',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                required: true,
-                default: {},
-                placeholder: 'Add Option',
-                description: 'Up to 25 options shown in the dropdown',
-                options: [
-                  {
-                    displayName: 'Option',
-                    name: 'option',
-                    values: [
-                      {
-                        displayName: 'Default',
-                        name: 'default',
-                        type: 'boolean',
-                        default: false,
-                        description: 'Whether this option is pre-selected when the menu opens',
-                      },
-                      {
-                        displayName: 'Description',
-                        name: 'description',
-                        type: 'string',
-                        default: '',
-                        description: 'Short description shown below the label (max 100 characters)',
-                      },
-                      {
-                        displayName: 'Emoji Animated',
-                        name: 'emojiAnimated',
-                        type: 'boolean',
-                        default: false,
-                      },
-                      {
-                        displayName: 'Emoji ID',
-                        name: 'emojiId',
-                        type: 'string',
-                        default: '',
-                        description: 'Discord snowflake ID for a custom server emoji',
-                      },
-                      {
-                        displayName: 'Emoji Name',
-                        name: 'emojiName',
-                        type: 'string',
-                        default: '',
-                        description: 'Unicode emoji or custom emoji name, for example 🎉',
-                      },
-                      {
-                        displayName: 'Label',
-                        name: 'label',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'Text shown in the dropdown for this option',
-                      },
-                      {
-                        displayName: 'Value',
-                        name: 'value',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'The value your bot receives when this option is selected',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: STRING_SELECT_PROPERTIES,
           },
         ],
       },
@@ -813,74 +1103,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Channel Types',
-                name: 'channelTypes',
-                type: 'multiOptions',
-                default: [],
-                options: [
-                  { name: 'Announcement', value: 5 },
-                  { name: 'Category', value: 4 },
-                  { name: 'Forum', value: 15 },
-                  { name: 'Media', value: 16 },
-                  { name: 'Stage Voice', value: 13 },
-                  { name: 'Text', value: 0 },
-                  { name: 'Voice', value: 2 },
-                ],
-                description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
-              },
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of items the user can select',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of items the user must select',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet',
-              },
-              {
-                displayName: 'Type',
-                name: 'selectType',
-                type: 'options',
-                options: [
-                  { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
-                  { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
-                  { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
-                  { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
-                ],
-                default: 5,
-                description: 'The type of Discord auto-populated select menu',
-              },
-            ],
+            values: AUTO_SELECT_PROPERTIES,
           },
         ],
       },
@@ -904,15 +1127,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Text Display',
             name: 'display',
-            values: [
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Markdown-formatted content displayed as a top-level text block',
-              },
-            ],
+            values: TEXT_DISPLAY_PROPERTIES,
           },
         ],
       },
@@ -936,29 +1151,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Section',
             name: 'section',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Section title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Section body text',
-              },
-              {
-                displayName: 'Thumbnail URL',
-                name: 'thumbnailUrl',
-                type: 'string',
-                default: '',
-                description: 'Optional thumbnail image URL for the section accessory',
-              },
-            ],
+            values: SECTION_PROPERTIES,
           },
         ],
       },
@@ -982,25 +1175,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Separator',
             name: 'separator',
-            values: [
-              {
-                displayName: 'Type',
-                name: 'type',
-                type: 'options',
-                options: [
-                  { name: 'Horizontal', value: 'horizontal' },
-                  { name: 'Emoji', value: 'emoji' },
-                ],
-                default: 'horizontal',
-              },
-              {
-                displayName: 'Emoji',
-                name: 'emoji',
-                type: 'string',
-                default: '',
-                description: 'Emoji shown for emoji separators',
-              },
-            ],
+            values: SEPARATOR_PROPERTIES,
           },
         ],
       },
@@ -1024,29 +1199,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Container',
             name: 'container',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Container title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Container body text',
-              },
-              {
-                displayName: 'Accent Color',
-                name: 'accentColor',
-                type: 'color',
-                default: '',
-                description: 'Accent color for the container border',
-              },
-            ],
+            values: CONTAINER_PROPERTIES,
           },
         ],
       },
@@ -1070,31 +1223,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Gallery',
             name: 'gallery',
-            values: [
-              {
-                displayName: 'Image URLs',
-                name: 'images',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                default: {},
-                placeholder: 'Add Image',
-                options: [
-                  {
-                    displayName: 'Image',
-                    name: 'image',
-                    values: [
-                      {
-                        displayName: 'Image URL',
-                        name: 'url',
-                        type: 'string',
-                        default: '',
-                        description: 'URL of the image to include in the gallery',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: MEDIA_GALLERY_PROPERTIES,
           },
         ],
       },
@@ -1118,22 +1247,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'File',
             name: 'file',
-            values: [
-              {
-                displayName: 'File URL',
-                name: 'fileUrl',
-                type: 'string',
-                default: '',
-                description: 'Attachment URL for the file component',
-              },
-              {
-                displayName: 'File Name',
-                name: 'fileName',
-                type: 'string',
-                default: '',
-                description: 'Optional display name for the attachment',
-              },
-            ],
+            values: FILE_PROPERTIES,
           },
         ],
       },
@@ -1205,130 +1319,7 @@ export class DiscordBot implements INodeType {
               {
                 displayName: 'Embed',
                 name: 'embed',
-                values: [
-													{
-														displayName: 'Author Icon URL',
-														name: 'authorIconUrl',
-														type: 'string',
-														default: '',
-														description: 'Small icon shown to the left of the author name',
-													},
-													{
-														displayName: 'Author Name',
-														name: 'authorName',
-														type: 'string',
-														default: '',
-														description: 'Author name shown above the embed title (max 256 characters)',
-													},
-													{
-														displayName: 'Author URL',
-														name: 'authorUrl',
-														type: 'string',
-														default: '',
-														description: 'URL the author name links to',
-													},
-													{
-														displayName: 'Color',
-														name: 'color',
-														type: 'color',
-														default: '',
-														description: 'Embed sidebar color, for example	#5865F2',
-													},
-													{
-														displayName: 'Description',
-														name: 'description',
-														type: 'string',
-														default: '',
-														description: 'Embed description (max 4096 characters)',
-													},
-													{
-														displayName: 'Embed Fields',
-														name: 'embedFields',
-														type: 'fixedCollection',
-														default: {},
-														placeholder: 'Add Field',
-														description: 'Up to 25 key-value fields inside the embed',
-														options: [
-																	{
-																		displayName: 'Field',
-																		name: 'field',
-																			values:	[
-																			{
-																				displayName: 'Name',
-																				name: 'name',
-																				type: 'string',
-																				default: '',
-																					required:	true,
-																				description: 'Field title (max 256 characters)',
-																			},
-																			{
-																				displayName: 'Value',
-																				name: 'value',
-																				type: 'string',
-																				default: '',
-																					required:	true,
-																				description: 'Field content (max 1024 characters)',
-																			},
-																			{
-																				displayName: 'Inline',
-																				name: 'inline',
-																				type: 'boolean',
-																				default: false,
-																			},
-																		]
-																	},
-															]
-													},
-													{
-														displayName: 'Footer Icon URL',
-														name: 'footerIconUrl',
-														type: 'string',
-														default: '',
-														description: 'Small icon shown to the left of the footer text',
-													},
-													{
-														displayName: 'Footer Text',
-														name: 'footerText',
-														type: 'string',
-														default: '',
-														description: 'Text shown in the embed footer (max 2048 characters)',
-													},
-													{
-														displayName: 'Image URL',
-														name: 'imageUrl',
-														type: 'string',
-														default: '',
-														description: 'Large image displayed at the bottom of the embed',
-													},
-													{
-														displayName: 'Thumbnail Image URL',
-														name: 'thumbnailUrl',
-														type: 'string',
-														default: '',
-														description: 'Small image displayed in the upper-right corner of the embed',
-													},
-													{
-														displayName: 'Timestamp',
-														name: 'timestamp',
-														type: 'string',
-														default: '',
-														description: 'ISO 8601 timestamp shown in the footer. Leave empty to omit.',
-													},
-													{
-														displayName: 'Title',
-														name: 'title',
-														type: 'string',
-														default: '',
-														description: 'Embed title (max 256 characters)',
-													},
-													{
-														displayName: 'URL',
-														name: 'url',
-														type: 'string',
-														default: '',
-														description: 'URL the title links to',
-													},
-													],
+                values: EMBED_FIELD_PROPERTIES,
               },
             ],
           },
@@ -1386,84 +1377,7 @@ export class DiscordBot implements INodeType {
               {
                 displayName: 'Button',
                 name: 'button',
-                values: [
-													{
-														displayName: 'Custom ID',
-														name: 'customId',
-														type: 'string',
-														default: '',
-														description: 'Required for non-link buttons. Unique identifier sent to your bot on click.',
-													},
-													{
-														displayName: 'Disabled',
-														name: 'disabled',
-														type: 'boolean',
-														default: false,
-													},
-													{
-														displayName: 'Emoji Animated',
-														name: 'emojiAnimated',
-														type: 'boolean',
-														default: false,
-														description: 'Whether the custom emoji is animated',
-													},
-													{
-														displayName: 'Emoji ID',
-														name: 'emojiId',
-														type: 'string',
-														default: '',
-														description: 'Discord snowflake ID for a custom server emoji',
-													},
-													{
-														displayName: 'Emoji Name',
-														name: 'emojiName',
-														type: 'string',
-														default: '',
-														description: 'Unicode emoji or custom emoji name to show on the button, for example	🎉	or wave',
-													},
-													{
-														displayName: 'Label',
-														name: 'label',
-														type: 'string',
-															required:	true,
-														default: '',
-													},
-													{
-														displayName: 'Style',
-														name: 'style',
-														type: 'options',
-														options: [
-																	{
-																		name: 'Primary (Blue)',
-																		value: 1
-																	},
-																	{
-																		name: 'Secondary (Grey)',
-																		value: 2
-																	},
-																	{
-																		name: 'Success (Green)',
-																		value: 3
-																	},
-																	{
-																		name: 'Danger (Red)',
-																		value: 4
-																	},
-																	{
-																		name: 'Link',
-																		value: 5
-																	},
-																],
-														default: 1
-													},
-													{
-														displayName: 'URL',
-														name: 'url',
-														type: 'string',
-														default: '',
-														description: 'Required for Link style buttons',
-													},
-													],
+                values: BUTTON_PROPERTIES,
               },
             ],
           },
@@ -1491,113 +1405,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of options the user can select (1–25)',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of options the user must select (0–25)',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet (max 150 characters)',
-              },
-              {
-                displayName: 'Select Options',
-                name: 'selectOptions',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                required: true,
-                default: {},
-                placeholder: 'Add Option',
-                description: 'Up to 25 options shown in the dropdown',
-                options: [
-                  {
-                    displayName: 'Option',
-                    name: 'option',
-                    values: [
-                      {
-                        displayName: 'Default',
-                        name: 'default',
-                        type: 'boolean',
-                        default: false,
-                        description: 'Whether this option is pre-selected when the menu opens',
-                      },
-                      {
-                        displayName: 'Description',
-                        name: 'description',
-                        type: 'string',
-                        default: '',
-                        description: 'Short description shown below the label (max 100 characters)',
-                      },
-                      {
-                        displayName: 'Emoji Animated',
-                        name: 'emojiAnimated',
-                        type: 'boolean',
-                        default: false,
-                      },
-                      {
-                        displayName: 'Emoji ID',
-                        name: 'emojiId',
-                        type: 'string',
-                        default: '',
-                        description: 'Discord snowflake ID for a custom server emoji',
-                      },
-                      {
-                        displayName: 'Emoji Name',
-                        name: 'emojiName',
-                        type: 'string',
-                        default: '',
-                        description: 'Unicode emoji or custom emoji name, for example 🎉',
-                      },
-                      {
-                        displayName: 'Label',
-                        name: 'label',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'Text shown in the dropdown for this option',
-                      },
-                      {
-                        displayName: 'Value',
-                        name: 'value',
-                        type: 'string',
-                        required: true,
-                        default: '',
-                        description: 'The value your bot receives when this option is selected',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: STRING_SELECT_PROPERTIES,
           },
         ],
       },
@@ -1622,74 +1430,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Select Menu',
             name: 'select',
-            values: [
-              {
-                displayName: 'Channel Types',
-                name: 'channelTypes',
-                type: 'multiOptions',
-                default: [],
-                options: [
-                  { name: 'Announcement', value: 5 },
-                  { name: 'Category', value: 4 },
-                  { name: 'Forum', value: 15 },
-                  { name: 'Media', value: 16 },
-                  { name: 'Stage Voice', value: 13 },
-                  { name: 'Text', value: 0 },
-                  { name: 'Voice', value: 2 },
-                ],
-                description: 'Filter which channel types appear. Leave empty to show all. Only applies when Type is Channel Select.',
-              },
-              {
-                displayName: 'Custom ID',
-                name: 'customId',
-                type: 'string',
-                required: true,
-                default: '',
-                description: 'Unique identifier for this menu, sent to your bot when a user makes a selection',
-              },
-              {
-                displayName: 'Disabled',
-                name: 'disabled',
-                type: 'boolean',
-                default: false,
-              },
-              {
-                displayName: 'Max Values',
-                name: 'maxValues',
-                type: 'number',
-                typeOptions: { minValue: 1, maxValue: 25 },
-                default: 1,
-                description: 'Maximum number of items the user can select',
-              },
-              {
-                displayName: 'Min Values',
-                name: 'minValues',
-                type: 'number',
-                typeOptions: { minValue: 0, maxValue: 25 },
-                default: 1,
-                description: 'Minimum number of items the user must select',
-              },
-              {
-                displayName: 'Placeholder',
-                name: 'placeholder',
-                type: 'string',
-                default: '',
-                description: 'Greyed-out text shown when nothing is selected yet',
-              },
-              {
-                displayName: 'Type',
-                name: 'selectType',
-                type: 'options',
-                options: [
-                  { name: 'Channel Select', value: 8, description: 'Auto-populated with server channels' },
-                  { name: 'Mentionable Select', value: 7, description: 'Auto-populated with users and roles' },
-                  { name: 'Role Select', value: 6, description: 'Auto-populated with server roles' },
-                  { name: 'User Select', value: 5, description: 'Auto-populated with server members' },
-                ],
-                default: 5,
-                description: 'The type of Discord auto-populated select menu',
-              },
-            ],
+            values: AUTO_SELECT_PROPERTIES,
           },
         ],
       },
@@ -1713,15 +1454,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Text Display',
             name: 'display',
-            values: [
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Markdown-formatted content displayed as a top-level text block',
-              },
-            ],
+            values: TEXT_DISPLAY_PROPERTIES,
           },
         ],
       },
@@ -1745,29 +1478,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Section',
             name: 'section',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Section title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Section body text',
-              },
-              {
-                displayName: 'Thumbnail URL',
-                name: 'thumbnailUrl',
-                type: 'string',
-                default: '',
-                description: 'Optional thumbnail image URL for the section accessory',
-              },
-            ],
+            values: SECTION_PROPERTIES,
           },
         ],
       },
@@ -1791,25 +1502,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Separator',
             name: 'separator',
-            values: [
-              {
-                displayName: 'Type',
-                name: 'type',
-                type: 'options',
-                options: [
-                  { name: 'Horizontal', value: 'horizontal' },
-                  { name: 'Emoji', value: 'emoji' },
-                ],
-                default: 'horizontal',
-              },
-              {
-                displayName: 'Emoji',
-                name: 'emoji',
-                type: 'string',
-                default: '',
-                description: 'Emoji shown for emoji separators',
-              },
-            ],
+            values: SEPARATOR_PROPERTIES,
           },
         ],
       },
@@ -1833,29 +1526,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Container',
             name: 'container',
-            values: [
-              {
-                displayName: 'Title',
-                name: 'title',
-                type: 'string',
-                default: '',
-                description: 'Container title text',
-              },
-              {
-                displayName: 'Content',
-                name: 'content',
-                type: 'string',
-                default: '',
-                description: 'Container body text',
-              },
-              {
-                displayName: 'Accent Color',
-                name: 'accentColor',
-                type: 'color',
-                default: '',
-                description: 'Accent color for the container border',
-              },
-            ],
+            values: CONTAINER_PROPERTIES,
           },
         ],
       },
@@ -1879,31 +1550,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'Gallery',
             name: 'gallery',
-            values: [
-              {
-                displayName: 'Image URLs',
-                name: 'images',
-                type: 'fixedCollection',
-                typeOptions: { multipleValues: true },
-                default: {},
-                placeholder: 'Add Image',
-                options: [
-                  {
-                    displayName: 'Image',
-                    name: 'image',
-                    values: [
-                      {
-                        displayName: 'Image URL',
-                        name: 'url',
-                        type: 'string',
-                        default: '',
-                        description: 'URL of the image to include in the gallery',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
+            values: MEDIA_GALLERY_PROPERTIES,
           },
         ],
       },
@@ -1927,22 +1574,7 @@ export class DiscordBot implements INodeType {
           {
             displayName: 'File',
             name: 'file',
-            values: [
-              {
-                displayName: 'File URL',
-                name: 'fileUrl',
-                type: 'string',
-                default: '',
-                description: 'Attachment URL for the file component',
-              },
-              {
-                displayName: 'File Name',
-                name: 'fileName',
-                type: 'string',
-                default: '',
-                description: 'Optional display name for the attachment',
-              },
-            ],
+            values: FILE_PROPERTIES,
           },
         ],
       },
@@ -2071,17 +1703,17 @@ export class DiscordBot implements INodeType {
                 name: 'option',
                 values: [
                   {
-                    displayName: 'Option Name',
-                    name: 'name',
+                    displayName: 'Option Description',
+                    name: 'description',
                     type: 'string',
-                    description: 'Lowercase, no spaces (e.g. "username")',
                     required: true,
                     default: '',
                   },
                   {
-                    displayName: 'Option Description',
-                    name: 'description',
+                    displayName: 'Option Name',
+                    name: 'name',
                     type: 'string',
+                    description: 'Lowercase, no spaces (e.g. "username")',
                     required: true,
                     default: '',
                   },
@@ -2093,11 +1725,44 @@ export class DiscordBot implements INodeType {
                       { name: 'String', value: 3 },
                       { name: 'Integer', value: 4 },
                       { name: 'Boolean', value: 5 },
-                      { name: 'User', value: 7 },
-                      { name: 'Channel', value: 8 },
-                      { name: 'Role', value: 9 },
+                      { name: 'User', value: 6 },
+                      { name: 'Channel', value: 7 },
+                      { name: 'Role', value: 8 },
+                      { name: 'Mentionable', value: 9 },
                     ],
                     default: 3,
+                  },
+                  {
+                    displayName: 'Predefined Choices',
+                    name: 'choices',
+                    type: 'fixedCollection',
+                    typeOptions: { multipleValues: true },
+                    displayOptions: { show: { type: [3, 4] } },
+                    placeholder: 'Add Choice',
+                    default: {},
+                    description: 'Restrict this option to a set of predefined values. Users must pick one of these choices.',
+                    options: [
+                      {
+                        displayName: 'Choice',
+                        name: 'choice',
+                        values: [
+                          {
+                            displayName: 'Name',
+                            name: 'name',
+                            type: 'string',
+                            default: '',
+                            description: 'Label shown to the user in Discord (1–100 characters)',
+                          },
+                          {
+                            displayName: 'Value',
+                            name: 'value',
+                            type: 'string',
+                            default: '',
+                            description: 'Value sent to the bot when selected. For Integer options, must be a whole number.',
+                          },
+                        ],
+                      },
+                    ],
                   },
                   {
                     displayName: 'Required',
@@ -2173,6 +1838,41 @@ export class DiscordBot implements INodeType {
         },
         default: '',
         description: 'Register as a guild-scoped command (instant). Leave empty to register globally (up to 1 hour to propagate).',
+      },
+
+      // ─── Delete Slash Command Fields ────────────────────────────────────────
+      {
+        displayName: 'Command ID',
+        name: 'deleteCommandId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-slash-command'] },
+        },
+        default: '',
+        required: true,
+        description: 'The ID of the slash command to delete. You can get this from the output of the Register Slash Command operation, or from List Slash Commands.',
+      },
+      {
+        displayName: 'Guild ID',
+        name: 'deleteCommandGuildId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['delete-slash-command'] },
+        },
+        default: '',
+        description: 'Required if deleting a guild-scoped command. Leave empty to delete a global command.',
+      },
+
+      // ─── List Slash Commands Fields ─────────────────────────────────────────
+      {
+        displayName: 'Guild ID',
+        name: 'listCommandsGuildId',
+        type: 'string',
+        displayOptions: {
+          show: { operation: ['list-slash-commands'] },
+        },
+        default: '',
+        description: 'List commands for a specific guild. Leave empty to list global commands.',
       },
 
       // ─── Message Operation Shared Fields ───────────────────────────────────
@@ -2436,6 +2136,17 @@ export class DiscordBot implements INodeType {
             ],
           },
         ],
+      },
+
+      {
+        displayName: 'Or Provide Components as Raw JSON',
+        name: 'modalComponentsJson',
+        type: 'json',
+        displayOptions: {
+          show: { operation: ['send-modal'] },
+        },
+        default: '',
+        description: 'Advanced: provide the modal components array as raw JSON (array of action row objects). When non-empty, overrides the Text Inputs builder above.',
       },
 
       // ─── Member Management Shared Fields ───────────────────────────────────
@@ -3432,46 +3143,11 @@ export class DiscordBot implements INodeType {
         const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
         return loadGuildOptions(credentials);
       },
-      async getChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('guildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getUpdateChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('updateGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getMsgOpChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('msgOpGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getHistoryChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('historyGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
-      async getThreadChannels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
-        const guildIds = this.getNodeParameter('threadCreateGuildIds', 0) as string[];
-        if (!guildIds.length) {
-          throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
-        }
-        return loadChannelOptions(credentials, guildIds);
-      },
+      getChannels: channelLoader('guildIds'),
+      getUpdateChannels: channelLoader('updateGuildIds'),
+      getMsgOpChannels: channelLoader('msgOpGuildIds'),
+      getHistoryChannels: channelLoader('historyGuildIds'),
+      getThreadChannels: channelLoader('threadCreateGuildIds'),
     },
   };
 
@@ -3505,77 +3181,8 @@ export class DiscordBot implements INodeType {
         const client = await getClient(credentials);
         const targetType = this.getNodeParameter('targetType', i) as 'channel' | 'user-dm';
         const content = this.getNodeParameter('content', i, '') as string;
-        const payloadMode = this.getNodeParameter('payloadMode', i, 'builder') as
-          | 'builder'
-          | 'raw-json'
-          | 'builder-merge';
 
-        let embeds: APIEmbed[] = [];
-        let components: APIMessageTopLevelComponent[] = [];
-
-        if (payloadMode === 'raw-json') {
-          const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-          const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-          components = parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', this);
-        } else {
-          const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
-            embed?: EmbedUiParams[];
-          };
-          const buttonBuilderParam = this.getNodeParameter('buttonBuilder', i, {}) as {
-            button?: ButtonUiParams[];
-          };
-          const stringSelectParam = this.getNodeParameter('stringSelectBuilder', i, {}) as {
-            select?: StringSelectMenuUiParams[];
-          };
-          const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
-            select?: AutoSelectMenuUiParams[];
-          };
-          const textDisplayParam = this.getNodeParameter('textDisplayBuilder', i, {}) as {
-            display?: TextDisplayUiParams[];
-          };
-          const sectionParam = this.getNodeParameter('sectionBuilder', i, {}) as {
-            section?: SectionUiParams[];
-          };
-          const separatorParam = this.getNodeParameter('separatorBuilder', i, {}) as {
-            separator?: SeparatorUiParams[];
-          };
-          const containerParam = this.getNodeParameter('containerBuilder', i, {}) as {
-            container?: ContainerUiParams[];
-          };
-          const mediaGalleryParam = this.getNodeParameter('mediaGalleryBuilder', i, {}) as {
-            gallery?: MediaGalleryUiParams[];
-          };
-          const fileParam = this.getNodeParameter('fileBuilder', i, {}) as {
-            file?: FileUiParams[];
-          };
-          embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
-          components = buildAllComponentsFromUi(
-            buttonBuilderParam.button ?? [],
-            stringSelectParam.select ?? [],
-            autoSelectParam.select ?? [],
-            textDisplayParam.display ?? [],
-            sectionParam.section ?? [],
-            separatorParam.separator ?? [],
-            containerParam.container ?? [],
-            mediaGalleryParam.gallery ?? [],
-            fileParam.file ?? [],
-            this.getNode(),
-          );
-
-          if (payloadMode === 'builder-merge') {
-            const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-            const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-            const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
-              componentsJson,
-              'Components JSON',
-              this,
-            );
-            embeds = [...embeds, ...extraEmbeds];
-            components = [...components, ...extraComponents];
-          }
-        }
+        const { embeds, components } = resolveMessagePayload(this, i);
 
         assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
@@ -3653,77 +3260,8 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('updateChannelId', i) as string;
         const messageId = this.getNodeParameter('updateMessageId', i) as string;
         const content = this.getNodeParameter('content', i, '') as string;
-        const payloadMode = this.getNodeParameter('payloadMode', i, 'builder') as
-          | 'builder'
-          | 'raw-json'
-          | 'builder-merge';
 
-        let embeds: APIEmbed[] = [];
-        let components: APIMessageTopLevelComponent[] = [];
-
-        if (payloadMode === 'raw-json') {
-          const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-          const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-          embeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-          components = parseJsonField<APIMessageTopLevelComponent[]>(componentsJson, 'Components JSON', this);
-        } else {
-          const embedBuilderParam = this.getNodeParameter('embedBuilder', i, {}) as {
-            embed?: EmbedUiParams[];
-          };
-          const buttonBuilderParam = this.getNodeParameter('buttonBuilder', i, {}) as {
-            button?: ButtonUiParams[];
-          };
-          const stringSelectParam = this.getNodeParameter('stringSelectBuilder', i, {}) as {
-            select?: StringSelectMenuUiParams[];
-          };
-          const autoSelectParam = this.getNodeParameter('autoSelectBuilder', i, {}) as {
-            select?: AutoSelectMenuUiParams[];
-          };
-          const textDisplayParam = this.getNodeParameter('textDisplayBuilder', i, {}) as {
-            display?: TextDisplayUiParams[];
-          };
-          const sectionParam = this.getNodeParameter('sectionBuilder', i, {}) as {
-            section?: SectionUiParams[];
-          };
-          const separatorParam = this.getNodeParameter('separatorBuilder', i, {}) as {
-            separator?: SeparatorUiParams[];
-          };
-          const containerParam = this.getNodeParameter('containerBuilder', i, {}) as {
-            container?: ContainerUiParams[];
-          };
-          const mediaGalleryParam = this.getNodeParameter('mediaGalleryBuilder', i, {}) as {
-            gallery?: MediaGalleryUiParams[];
-          };
-          const fileParam = this.getNodeParameter('fileBuilder', i, {}) as {
-            file?: FileUiParams[];
-          };
-          embeds = buildEmbedsFromUi(embedBuilderParam.embed ?? [], this.getNode());
-          components = buildAllComponentsFromUi(
-            buttonBuilderParam.button ?? [],
-            stringSelectParam.select ?? [],
-            autoSelectParam.select ?? [],
-            textDisplayParam.display ?? [],
-            sectionParam.section ?? [],
-            separatorParam.separator ?? [],
-            containerParam.container ?? [],
-            mediaGalleryParam.gallery ?? [],
-            fileParam.file ?? [],
-            this.getNode(),
-          );
-
-          if (payloadMode === 'builder-merge') {
-            const embedsJson = this.getNodeParameter('embedsJson', i, '[]') as string;
-            const componentsJson = this.getNodeParameter('componentsJson', i, '[]') as string;
-            const extraEmbeds = parseJsonField<APIEmbed[]>(embedsJson, 'Embeds JSON', this);
-            const extraComponents = parseJsonField<APIMessageTopLevelComponent[]>(
-              componentsJson,
-              'Components JSON',
-              this,
-            );
-            embeds = [...embeds, ...extraEmbeds];
-            components = [...components, ...extraComponents];
-          }
-        }
+        const { embeds, components } = resolveMessagePayload(this, i);
 
         assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
 
@@ -3731,11 +3269,7 @@ export class DiscordBot implements INodeType {
           throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components to update the message');
         }
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
         await message.edit({
           content: content || null,
           embeds,
@@ -3751,6 +3285,62 @@ export class DiscordBot implements INodeType {
           },
           pairedItem: { item: i },
         });
+
+        continue;
+      }
+
+      if (operation === 'delete-slash-command') {
+        const commandId = this.getNodeParameter('deleteCommandId', i) as string;
+        const guildId = (this.getNodeParameter('deleteCommandGuildId', i, '') as string).trim();
+
+        if (!commandId.trim()) {
+          throw new NodeOperationError(this.getNode(), 'Command ID is required');
+        }
+
+        await deleteSlashCommand({
+          token: credentials.token,
+          clientId: credentials.clientId,
+          commandId: commandId.trim(),
+          guildId: guildId || undefined,
+        });
+
+        returnData.push({
+          json: {
+            operation,
+            deleted: true,
+            commandId: commandId.trim(),
+            scope: guildId ? 'guild' : 'global',
+            guildId: guildId || null,
+          },
+          pairedItem: { item: i },
+        });
+
+        continue;
+      }
+
+      if (operation === 'list-slash-commands') {
+        const guildId = (this.getNodeParameter('listCommandsGuildId', i, '') as string).trim();
+
+        const commands = await listSlashCommands({
+          token: credentials.token,
+          clientId: credentials.clientId,
+          guildId: guildId || undefined,
+        });
+
+        for (const cmd of commands) {
+          returnData.push({
+            json: {
+              operation,
+              commandId: cmd.id,
+              commandName: cmd.name,
+              commandDescription: cmd.description,
+              commandType: cmd.type,
+              scope: cmd.guild_id ? 'guild' : 'global',
+              guildId: cmd.guild_id ?? null,
+            },
+            pairedItem: { item: i },
+          });
+        }
 
         continue;
       }
@@ -3816,7 +3406,15 @@ export class DiscordBot implements INodeType {
 
         // Try to use the friendly builder first
         const commandOptionsCollection = this.getNodeParameter('commandOptions', i, {}) as {
-          options?: { option?: Array<{ name: string; description: string; type: number; required: boolean }> };
+          options?: {
+            option?: Array<{
+              name: string;
+              description: string;
+              type: number;
+              required: boolean;
+              choices?: { choice?: Array<{ name: string; value: string }> };
+            }>;
+          };
         };
 
         if (
@@ -3824,12 +3422,22 @@ export class DiscordBot implements INodeType {
           Array.isArray(commandOptionsCollection.options.option) &&
           commandOptionsCollection.options.option.length > 0
         ) {
-          commandOptions = commandOptionsCollection.options.option.map((opt) => ({
-            name: opt.name,
-            description: opt.description,
-            type: opt.type,
-            required: opt.required,
-          }));
+          commandOptions = commandOptionsCollection.options.option.map((opt) => {
+            const base: Record<string, unknown> = {
+              name: opt.name,
+              description: opt.description,
+              type: opt.type,
+              required: opt.required,
+            };
+            const rawChoices = opt.choices?.choice;
+            if (rawChoices && rawChoices.length > 0) {
+              base.choices = rawChoices.map((c) => ({
+                name: c.name,
+                value: opt.type === 4 ? Number(c.value) : c.value,
+              }));
+            }
+            return base;
+          }) as unknown as ApplicationCommandOptionData[];
         } else {
           // Fall back to JSON if no options were added via the builder
           const commandOptionsJson = this.getNodeParameter('commandOptionsJson', i, '[]') as string;
@@ -3838,6 +3446,80 @@ export class DiscordBot implements INodeType {
             'Command Options JSON',
             this,
           );
+        }
+
+        for (let optIdx = 0; optIdx < commandOptions.length; optIdx++) {
+          const opt = commandOptions[optIdx] as { name?: unknown; description?: unknown; type?: unknown; choices?: unknown };
+          const optName = typeof opt.name === 'string' ? opt.name.trim() : '';
+          const optDesc = typeof opt.description === 'string' ? opt.description.trim() : '';
+          const optType = typeof opt.type === 'number' ? opt.type : 0;
+
+          if (!optName) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} is missing a name. Each option must have a name (1–32 characters, only lowercase letters, numbers, hyphens, or underscores).`,
+            );
+          }
+          if (!/^[\w-]{1,32}$/.test(optName)) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} has an invalid name "${optName}". Option names must be 1–32 characters and contain only lowercase letters, numbers, hyphens, or underscores.`,
+            );
+          }
+          if (optName !== optName.toLowerCase()) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") must be lowercase. Discord does not allow uppercase letters in option names.`,
+            );
+          }
+          if (!optDesc) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") is missing a description. Each option must have a description (1–100 characters).`,
+            );
+          }
+          if (optDesc.length > 100) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") description is too long (${optDesc.length} characters). Descriptions must be 100 characters or fewer.`,
+            );
+          }
+
+          const choices = Array.isArray(opt.choices) ? (opt.choices as Array<{ name?: unknown; value?: unknown }>) : [];
+          if (choices.length > 25) {
+            throw new NodeOperationError(
+              this.getNode(),
+              `Command option ${optIdx + 1} ("${optName}") has too many predefined choices (${choices.length}). Discord allows a maximum of 25 choices per option.`,
+            );
+          }
+          for (let choiceIdx = 0; choiceIdx < choices.length; choiceIdx++) {
+            const choice = choices[choiceIdx];
+            const choiceName = typeof choice.name === 'string' ? choice.name : '';
+            if (!choiceName) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") is missing a name.`,
+              );
+            }
+            if (choiceName.length > 100) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") name is too long (${choiceName.length} characters). Choice names must be 100 characters or fewer.`,
+              );
+            }
+            if (choice.value === undefined || choice.value === null || choice.value === '') {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") is missing a value.`,
+              );
+            }
+            if (optType === 4 && (typeof choice.value !== 'number' || !Number.isInteger(choice.value as number))) {
+              throw new NodeOperationError(
+                this.getNode(),
+                `Choice ${choiceIdx + 1} of command option ${optIdx + 1} ("${optName}") value "${choice.value}" is not a valid integer. Integer options require whole number values.`,
+              );
+            }
+          }
         }
 
         const command = await registerSlashCommand({
@@ -4021,11 +3703,7 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
         await message.delete();
 
         returnData.push({ json: { operation, channelId, messageId, deleted: true }, pairedItem: { item: i } });
@@ -4037,11 +3715,7 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
 
         returnData.push({
           json: {
@@ -4072,6 +3746,9 @@ export class DiscordBot implements INodeType {
       if (operation === 'fetch-message-history') {
         const client = await getClient(credentials);
         const channelId = this.getNodeParameter('historyChannelId', i) as string;
+        if (!channelId) {
+          throw new NodeOperationError(this.getNode(), 'Channel Name or ID is required for Fetch Message History');
+        }
         const limit = this.getNodeParameter('historyLimit', i, 50) as number;
         const before = this.getNodeParameter('historyBefore', i, '') as string;
         const after = this.getNodeParameter('historyAfter', i, '') as string;
@@ -4113,11 +3790,7 @@ export class DiscordBot implements INodeType {
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
         const emoji = this.getNodeParameter('reactionEmoji', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
 
         if (operation === 'add-reaction') {
           await message.react(emoji);
@@ -4143,11 +3816,7 @@ export class DiscordBot implements INodeType {
         const channelId = this.getNodeParameter('msgOpChannelId', i) as string;
         const messageId = this.getNodeParameter('msgOpMessageId', i) as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
 
         if (operation === 'pin-message') {
           await message.pin();
@@ -4215,12 +3884,25 @@ export class DiscordBot implements INodeType {
 
         const modalCustomId = this.getNodeParameter('modalCustomId', i) as string;
         const modalTitle = this.getNodeParameter('modalTitle', i) as string;
-        const modalInputsParam = this.getNodeParameter('modalInputs', i, {}) as ModalUiParams['inputs'];
+        const modalComponentsJson = this.getNodeParameter('modalComponentsJson', i, '') as string;
 
-        const modal = buildModalFromUi(
-          { customId: modalCustomId, title: modalTitle, inputs: modalInputsParam },
-          this.getNode(),
-        );
+        let modal: object;
+        if (modalComponentsJson && modalComponentsJson.trim()) {
+          if (!modalCustomId?.trim()) {
+            throw new NodeOperationError(this.getNode(), 'Modal Custom ID is required');
+          }
+          if (!modalTitle?.trim()) {
+            throw new NodeOperationError(this.getNode(), 'Modal Title is required');
+          }
+          const components = parseJsonField<unknown[]>(modalComponentsJson, 'Modal Components JSON', this);
+          modal = { custom_id: modalCustomId, title: modalTitle, components };
+        } else {
+          const modalInputsParam = this.getNodeParameter('modalInputs', i, {}) as ModalUiParams['inputs'];
+          modal = buildModalFromUi(
+            { customId: modalCustomId, title: modalTitle, inputs: modalInputsParam },
+            this.getNode(),
+          );
+        }
 
         const rest = new REST({ version: '10' });
         await rest.post(Routes.interactionCallback(interactionId, interactionToken), {
@@ -4371,11 +4053,7 @@ export class DiscordBot implements INodeType {
         const rateLimitPerUser = this.getNodeParameter('threadSlowmode', i, 0) as number;
         const reason = this.getNodeParameter('threadCreateReason', i, '') as string;
 
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isTextBased() || !('messages' in channel)) {
-          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a text channel`);
-        }
-        const message = await (channel as any).messages.fetch(messageId);
+        const message = await fetchTextChannelMessage(client, channelId, messageId, this.getNode());
         const thread = await message.startThread({
           name,
           autoArchiveDuration,

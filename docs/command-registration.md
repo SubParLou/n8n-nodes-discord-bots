@@ -9,6 +9,8 @@ For triggering on command invocations, see [Interaction Triggers](interaction-tr
 ## Contents
 
 - [Register Slash Command](#register-slash-command)
+- [Delete Slash Command](#delete-slash-command)
+- [List Slash Commands](#list-slash-commands)
 - [Register Context Menu Command](#register-context-menu-command)
 
 ---
@@ -30,6 +32,37 @@ The visual builder takes precedence; the JSON field is used only when no options
 **Output:** `{ operation, commandId, commandName, scope, guildId }`
 
 > Guild-scoped commands register instantly. Global commands can take up to 1 hour to appear in Discord.
+
+[^ Top](#command-registration)
+
+---
+
+## Delete Slash Command
+
+Removes a previously registered slash command. Use this in teardown workflows or when a command is being renamed or retired.
+
+| Parameter | Description |
+|-----------|-------------|
+| Command ID | The Discord application command ID to delete (returned by **Register Slash Command** as `commandId`) |
+| Guild ID | Guild the command was registered under. Leave empty for a global command. |
+
+**Output:** `{ operation, commandId, scope, guildId }`
+
+> To find the command ID of an existing command, use **List Slash Commands** first.
+
+[^ Top](#command-registration)
+
+---
+
+## List Slash Commands
+
+Returns all slash commands currently registered to the bot, optionally scoped to a guild.
+
+| Parameter | Description |
+|-----------|-------------|
+| Guild ID | Restrict listing to commands in this guild. Leave empty to list global commands. |
+
+**Output:** Array of `{ id, name, description, type, guild_id? }` objects — one item per registered command.
 
 [^ Top](#command-registration)
 

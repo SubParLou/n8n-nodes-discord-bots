@@ -539,10 +539,6 @@ export function buildModalFromUi(modal: ModalUiParams, node: INode): object {
   };
 }
 
-function asTopLevelComponent(component: Record<string, unknown>): APIMessageTopLevelComponent {
-  return component as unknown as APIMessageTopLevelComponent;
-}
-
 /**
  * Build a Discord-compatible TextDisplay component.
  */
@@ -596,7 +592,7 @@ function buildSectionsFromUi(sections: SectionUiParams[], node: INode): APIMessa
       };
     }
 
-    return asTopLevelComponent(result);
+    return result as unknown as APIMessageTopLevelComponent;
   });
 }
 
@@ -644,7 +640,7 @@ function buildContainersFromUi(containers: ContainerUiParams[], node: INode): AP
       result.accent_color = parseEmbedColor(container.accentColor, node);
     }
 
-    return asTopLevelComponent(result);
+    return result as unknown as APIMessageTopLevelComponent;
   });
 }
 
@@ -690,6 +686,6 @@ function buildFilesFromUi(files: FileUiParams[], node: INode): APIMessageTopLeve
       result.name = file.fileName.trim();
     }
 
-    return asTopLevelComponent(result);
+    return result as unknown as APIMessageTopLevelComponent;
   });
 }
