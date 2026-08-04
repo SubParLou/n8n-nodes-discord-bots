@@ -713,7 +713,7 @@ export class DiscordBotTrigger implements INodeType {
         if (!guildIds.length) {
           throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
         }
-        return loadChannelOptions(credentials, guildIds);
+        return loadChannelOptions(credentials, guildIds, [ChannelType.GuildForum, ChannelType.GuildMedia]);
       },
       async getRoles(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
         const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;

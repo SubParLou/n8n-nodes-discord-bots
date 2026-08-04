@@ -24,6 +24,7 @@ This document compares the current node capabilities against the full Discord.js
 | Actions: Send messages with native Discord polls; poll vote triggers | ✅ v1.8.0 |
 | Message components: embeds, buttons (all 5 styles), string select menus, auto-populated select menus (user/role/mentionable/channel), Discord Components v2 layout blocks | ✅ |
 | Message payload modes: visual builder, raw JSON, builder + JSON merge | ✅ |
+| Forum and Media channel support: channel filters on triggers match forum posts; Create Forum Post action (title, content, tags, embeds/components) | ✅ v1.9.2 |
 
 ---
 

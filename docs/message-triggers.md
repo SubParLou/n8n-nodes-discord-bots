@@ -17,7 +17,7 @@ Triggers on new messages in guild channels or direct messages sent to the bot.
 
 ## New Channel Message
 
-Fires when a message is posted in a guild text channel the bot can see.
+Fires when a message is posted in a guild text channel the bot can see. Also fires for posts in Forum and Media channels — select the forum channel itself in the Channel filter to match messages in any of its posts (matched via the post's parent channel).
 
 **Available filters:** Guild, Channel, Role, Pattern, Case Sensitive, Trigger on Bot Messages
 
@@ -62,7 +62,7 @@ Fires when a user adds or removes a vote from a poll.
 | Filter | Description |
 |--------|-------------|
 | Guild | Restrict to one or more guilds (channel messages only) |
-| Channel | Restrict to one or more channels or parent categories (channel messages only) |
+| Channel | Restrict to one or more channels, parent categories, or forum/media channels (matches posts within them) (channel messages only) |
 | Role | Only fire for messages from members holding at least one of the selected roles |
 | Pattern | Content-matching rule (see [Pattern Options](#pattern-options)) |
 | Case Sensitive | Whether the pattern match is case-sensitive (default: off) |

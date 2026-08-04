@@ -95,6 +95,7 @@ This node includes a minimal telemetry feature to help me understand how many ac
 
 | Version | Highlights |
 |---|---|
+| **v1.9.2** | Forum and Media channel support - channel filters on triggers now match forum posts; new Create Forum Post action ([#26](https://github.com/SubParLou/n8n-nodes-discord-bots/issues/26)) |
 | **v1.9.1** | Refactor pass — ~600 lines removed (zero behaviour change): shared schema consts, helper extraction, dead code deletion |
 | **v1.9.0** | Discord Components v2 layout blocks (Text Display, Section, Separator, Container, Media Gallery, File) in Send Message, Update Message, and Respond to Interaction; slash command fixes (#21–#24) |
 | **v1.8.0** | Message Polls - send native polls and trigger on poll votes |

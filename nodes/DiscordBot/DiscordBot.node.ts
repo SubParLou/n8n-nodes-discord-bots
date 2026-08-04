@@ -1,4 +1,5 @@
 import {
+  ChannelType,
   REST,
   Routes,
   type ApplicationCommandOptionData,
@@ -23,6 +24,8 @@ import {
   getClient,
   listSlashCommands,
   loadChannelOptions,
+  loadForumChannelOptions,
+  loadForumTagOptions,
   loadGuildOptions,
   registerContextMenuCommand,
   registerSlashCommand,
@@ -75,6 +78,7 @@ type Operation =
   | 'add-thread-member'
   | 'create-thread'
   | 'create-thread-from-message'
+  | 'create-forum-post'
   | 'edit-thread'
   | 'remove-thread-member'
   | 'create-scheduled-event'
@@ -128,6 +132,17 @@ function channelLoader(guildParam: string) {
       throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
     }
     return loadChannelOptions(credentials, guildIds);
+  };
+}
+
+function forumChannelLoader(guildParam: string) {
+  return async function (this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+    const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+    const guildIds = this.getNodeParameter(guildParam, 0) as string[];
+    if (!guildIds.length) {
+      throw new NodeOperationError(this.getNode(), 'Select at least one guild first');
+    }
+    return loadForumChannelOptions(credentials, guildIds);
   };
 }
 
@@ -738,6 +753,7 @@ export class DiscordBot implements INodeType {
           { name: 'Ban Member', value: 'ban-member' },
           { name: 'Bulk Delete Messages', value: 'bulk-delete-messages' },
           { name: 'Create Channel', value: 'create-channel' },
+          { name: 'Create Forum Post', value: 'create-forum-post' },
           { name: 'Create Invite', value: 'create-invite' },
           { name: 'Create Role', value: 'create-role' },
           { name: 'Create Scheduled Event', value: 'create-scheduled-event' },
@@ -839,6 +855,52 @@ export class DiscordBot implements INodeType {
         default: '',
         required: true,
       },
+      // ─── Create Forum Post targeting fields ────────────────────────────────
+      {
+        displayName: 'Guild Names or IDs',
+        name: 'forumPostGuildIds',
+        type: 'multiOptions',
+        typeOptions: {
+          loadOptionsMethod: 'getGuilds',
+        },
+        displayOptions: {
+          show: {
+            operation: ['create-forum-post'],
+          },
+        },
+        default: [],
+        description: 'Used to load forum channels. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+      },
+      {
+        displayName: 'Forum Channel Name or ID',
+        name: 'forumPostChannelId',
+        type: 'options',
+        description: 'The forum or media channel to post in. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+        typeOptions: {
+          loadOptionsMethod: 'getForumChannels',
+          loadOptionsDependsOn: ['forumPostGuildIds'],
+        },
+        displayOptions: {
+          show: {
+            operation: ['create-forum-post'],
+          },
+        },
+        default: '',
+        required: true,
+      },
+      {
+        displayName: 'Post Title',
+        name: 'forumPostTitle',
+        type: 'string',
+        displayOptions: {
+          show: {
+            operation: ['create-forum-post'],
+          },
+        },
+        default: '',
+        required: true,
+        description: 'Title for the new forum post (max 100 characters)',
+      },
       {
         displayName: 'Content',
         name: 'content',
@@ -853,6 +915,7 @@ export class DiscordBot implements INodeType {
               'send-message-with-poll',
               'respond-to-interaction',
               'update-message',
+              'create-forum-post',
             ],
           },
         },
@@ -985,7 +1048,7 @@ export class DiscordBot implements INodeType {
         noDataExpression: true,
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
           },
         },
         default: 'builder',
@@ -1017,7 +1080,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1042,7 +1105,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1067,7 +1130,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1092,7 +1155,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1116,7 +1179,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1140,7 +1203,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1164,7 +1227,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1188,7 +1251,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1212,7 +1275,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1236,7 +1299,7 @@ export class DiscordBot implements INodeType {
         },
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['builder', 'builder-merge'],
           },
         },
@@ -1287,7 +1350,7 @@ export class DiscordBot implements INodeType {
         type: 'json',
         displayOptions: {
           show: {
-            operation: ['send-message', 'send-message-with-poll', 'update-message'],
+            operation: ['send-message', 'send-message-with-poll', 'update-message', 'create-forum-post'],
             payloadMode: ['raw-json', 'builder-merge'],
           },
         },
@@ -1345,7 +1408,7 @@ export class DiscordBot implements INodeType {
         type: 'json',
         displayOptions: {
           show: {
-            operation: ['send-message', 'update-message'],
+            operation: ['send-message', 'update-message', 'create-forum-post'],
             payloadMode: ['raw-json', 'builder-merge'],
           },
         },
@@ -2295,7 +2358,7 @@ export class DiscordBot implements INodeType {
         name: 'threadAutoArchiveDuration',
         type: 'options',
         displayOptions: {
-          show: { operation: ['create-thread', 'create-thread-from-message'] },
+          show: { operation: ['create-thread', 'create-thread-from-message', 'create-forum-post'] },
         },
         options: [
           { name: '1 Day', value: 1440 },
@@ -2322,7 +2385,7 @@ export class DiscordBot implements INodeType {
         type: 'number',
         typeOptions: { minValue: 0, maxValue: 21600 },
         displayOptions: {
-          show: { operation: ['create-thread', 'create-thread-from-message'] },
+          show: { operation: ['create-thread', 'create-thread-from-message', 'create-forum-post'] },
         },
         default: 0,
         description: 'Seconds a member must wait between messages in this thread (0 to disable)',
@@ -2332,10 +2395,24 @@ export class DiscordBot implements INodeType {
         name: 'threadCreateReason',
         type: 'string',
         displayOptions: {
-          show: { operation: ['create-thread', 'create-thread-from-message'] },
+          show: { operation: ['create-thread', 'create-thread-from-message', 'create-forum-post'] },
         },
         default: '',
         description: 'Reason for creating this thread (recorded in the guild audit log)',
+      },
+      {
+        displayName: 'Applied Tag Names or IDs',
+        name: 'forumPostTagIds',
+        type: 'multiOptions',
+        typeOptions: {
+          loadOptionsMethod: 'getForumTags',
+          loadOptionsDependsOn: ['forumPostChannelId'],
+        },
+        displayOptions: {
+          show: { operation: ['create-forum-post'] },
+        },
+        default: [],
+        description: 'Optional tags configured on the forum channel to apply to this post. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
       },
       {
         displayName: 'Thread ID',
@@ -3148,6 +3225,12 @@ export class DiscordBot implements INodeType {
       getMsgOpChannels: channelLoader('msgOpGuildIds'),
       getHistoryChannels: channelLoader('historyGuildIds'),
       getThreadChannels: channelLoader('threadCreateGuildIds'),
+      getForumChannels: forumChannelLoader('forumPostGuildIds'),
+      async getForumTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+        const credentials = (await this.getCredentials('discordBotApi')) as DiscordBotCredentials;
+        const channelId = this.getNodeParameter('forumPostChannelId', 0) as string;
+        return loadForumTagOptions(credentials, channelId);
+      },
     },
   };
 
@@ -4106,6 +4189,56 @@ export class DiscordBot implements INodeType {
             parentChannelId: thread.parentId,
             guildId: thread.guildId,
             type: thread.type,
+            archived: thread.archived,
+            autoArchiveDuration: thread.autoArchiveDuration,
+            createdTimestamp: thread.createdTimestamp,
+          },
+          pairedItem: { item: i },
+        });
+        continue;
+      }
+
+      if (operation === 'create-forum-post') {
+        const client = await getClient(credentials);
+        const channelId = this.getNodeParameter('forumPostChannelId', i) as string;
+        const name = this.getNodeParameter('forumPostTitle', i) as string;
+        const content = this.getNodeParameter('content', i, '') as string;
+        const appliedTags = this.getNodeParameter('forumPostTagIds', i, []) as string[];
+        const autoArchiveDuration = this.getNodeParameter('threadAutoArchiveDuration', i, 1440) as number;
+        const rateLimitPerUser = this.getNodeParameter('threadSlowmode', i, 0) as number;
+        const reason = this.getNodeParameter('threadCreateReason', i, '') as string;
+
+        const { embeds, components } = resolveMessagePayload(this, i);
+        assertEmbedsAndLayoutBlocksDoNotMix(embeds, components, this.getNode(), operation);
+
+        if (!content && !embeds.length && !components.length) {
+          throw new NodeOperationError(this.getNode(), 'Provide content, embeds, or components for the forum post');
+        }
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || (channel.type !== ChannelType.GuildForum && channel.type !== ChannelType.GuildMedia)) {
+          throw new NodeOperationError(this.getNode(), `Channel ${channelId} is not a forum or media channel`);
+        }
+
+        const createOpts: Record<string, unknown> = {
+          name,
+          message: { content: content || undefined, embeds, components: components as any },
+          autoArchiveDuration,
+        };
+        if (appliedTags.length) createOpts.appliedTags = appliedTags;
+        if (rateLimitPerUser) createOpts.rateLimitPerUser = rateLimitPerUser;
+        if (reason) createOpts.reason = reason;
+
+        const thread = await (channel as any).threads.create(createOpts);
+
+        returnData.push({
+          json: {
+            operation,
+            threadId: thread.id,
+            threadName: thread.name,
+            parentChannelId: thread.parentId,
+            guildId: thread.guildId,
+            appliedTags: (thread as any).appliedTags ?? [],
             archived: thread.archived,
             autoArchiveDuration: thread.autoArchiveDuration,
             createdTimestamp: thread.createdTimestamp,
