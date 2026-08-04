@@ -46,6 +46,17 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify npm token
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is missing. Add NPM_TOKEN in GitHub repository settings (Secrets and variables > Actions > Secrets)."
+            exit 1
+          fi
+          npm whoami
+
       - name: Install dependencies
         if: steps.tag_check.outputs.exists == 'false'
         run: npm install --no-audit --no-fund
@@ -63,10 +74,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is missing. Add NPM_TOKEN in GitHub repository settings (Secrets and variables > Actions > Secrets)."
-            exit 1
-          fi
           echo "Publishing v${{ steps.pkg.outputs.version }} with NPM_TOKEN secret"
           npm publish --access public
 
