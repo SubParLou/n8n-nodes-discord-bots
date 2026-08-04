@@ -128,7 +128,7 @@ Creates a new thread in a channel without attaching it to a message. Supports pu
 
 ### Create Forum Post
 
-Creates a new post (thread) in a Forum or Media channel. Forum channels don't accept plain messages — every post starts a thread with an initial message, so this is the way to publish into one from a workflow.
+Creates a new post (thread) in a Forum or Media channel. Forum channels don't accept plain messages: every post starts a thread with an initial message, so this is the way to publish into one from a workflow.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -136,7 +136,7 @@ Creates a new post (thread) in a Forum or Media channel. Forum channels don't ac
 | Forum Channel | The forum or media channel to post in |
 | Post Title | Title of the new post (1-100 characters) |
 | Content | Plain-text body of the starting message |
-| Message Payload Mode | `Builder`, `Raw JSON`, or `Builder + Advanced JSON Merge` — same embed/component builders used by Send Message, for posts that need embeds or Components v2 layout blocks |
+| Message Payload Mode | `Builder`, `Raw JSON`, or `Builder + Advanced JSON Merge`, the same embed/component builders used by Send Message, for posts that need embeds or Components v2 layout blocks |
 | Applied Tags | Optional tags configured on the forum channel, loaded from the selected channel |
 | Auto Archive Duration | Inactivity minutes before auto-archive: `60`, `1440`, `4320`, `10080` |
 | Slow Mode (seconds) | Per-user message cooldown (0-21600 seconds) |
