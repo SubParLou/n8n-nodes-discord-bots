@@ -132,18 +132,51 @@ async function loadGuildResourceOptions(
   return [...optionsById.values()];
 }
 
+const FORUM_CHANNEL_TYPES = [ChannelType.GuildForum, ChannelType.GuildMedia];
+
 export function loadChannelOptions(
+  credentials: DiscordBotCredentials,
+  guildIds: string[],
+  extraTypes: ChannelType[] = [],
+): Promise<INodePropertyOptions[]> {
+  const types = new Set<ChannelType>([ChannelType.GuildText, ChannelType.GuildAnnouncement, ...extraTypes]);
+  return loadGuildResourceOptions(credentials, guildIds, async (guild, optionsById) => {
+    const channels = await guild.channels.fetch();
+    channels.forEach((channel) => {
+      if (channel && types.has(channel.type)) {
+        optionsById.set(channel.id, { name: `${guild.name} / ${channel.name}`, value: channel.id });
+      }
+    });
+  });
+}
+
+export function loadForumChannelOptions(
   credentials: DiscordBotCredentials,
   guildIds: string[],
 ): Promise<INodePropertyOptions[]> {
   return loadGuildResourceOptions(credentials, guildIds, async (guild, optionsById) => {
     const channels = await guild.channels.fetch();
     channels.forEach((channel) => {
-      if (channel?.type === ChannelType.GuildText || channel?.type === ChannelType.GuildAnnouncement) {
+      if (channel && FORUM_CHANNEL_TYPES.includes(channel.type)) {
         optionsById.set(channel.id, { name: `${guild.name} / ${channel.name}`, value: channel.id });
       }
     });
   });
+}
+
+export async function loadForumTagOptions(
+  credentials: DiscordBotCredentials,
+  channelId: string,
+): Promise<INodePropertyOptions[]> {
+  if (!channelId) {
+    return [];
+  }
+  const client = await getClient(credentials);
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || !FORUM_CHANNEL_TYPES.includes(channel.type) || !('availableTags' in channel)) {
+    return [];
+  }
+  return channel.availableTags.map((tag) => ({ name: tag.name, value: tag.id }));
 }
 
 export function loadVoiceChannelOptions(
