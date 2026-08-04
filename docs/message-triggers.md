@@ -17,7 +17,7 @@ Triggers on new messages in guild channels or direct messages sent to the bot.
 
 ## New Channel Message
 
-Fires when a message is posted in a guild text channel the bot can see. Also fires for posts in Forum and Media channels — select the forum channel itself in the Channel filter to match messages in any of its posts (matched via the post's parent channel).
+Fires when a message is posted in a guild text channel the bot can see. Also fires for posts in Forum and Media channels: select the forum channel itself in the Channel filter to match messages in any of its posts (matched via the post's parent channel).
 
 **Available filters:** Guild, Channel, Role, Pattern, Case Sensitive, Trigger on Bot Messages
 
